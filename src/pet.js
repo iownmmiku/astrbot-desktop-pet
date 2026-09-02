@@ -25,7 +25,9 @@
     sleepy_threshold: 20,
     enable_roam: true,
   };
-  const behavior = Object.assign({}, BEHAVIOR_DEFAULTS, JSON.parse(localStorage.getItem("pet-behavior") || "{}"));
+  let savedBehavior = {};
+  try { savedBehavior = JSON.parse(localStorage.getItem("pet-behavior") || "{}"); } catch (_) { savedBehavior = {}; }
+  const behavior = Object.assign({}, BEHAVIOR_DEFAULTS, savedBehavior);
   function applyBehavior(cfg) {
     if (!cfg || typeof cfg !== "object") return;
     for (const k of Object.keys(BEHAVIOR_DEFAULTS)) {
@@ -41,7 +43,7 @@
 
   /** 把 server 配置解析为 http(s) 基地址 */
   function httpBase() {
-    let s = settings.server.trim().replace(/\/+$/, "");
+    let s = String(settings.server || "127.0.0.1:9898").trim().replace(/\/+$/, "");
     if (/^wss:\/\//i.test(s)) return "https://" + s.slice(6);
     if (/^ws:\/\//i.test(s)) return "http://" + s.slice(5);
     if (/^https?:\/\//i.test(s)) return s;
@@ -74,10 +76,18 @@
 
   let model = null;
   let baseScaleX = 1;
+  let modelLoadSerial = 0;
 
   async function loadModel() {
+    const serial = ++modelLoadSerial;
     try {
-      model = await PIXI.live2d.Live2DModel.from(settings.modelPath, { autoInteract: false });
+      const nextModel = await PIXI.live2d.Live2DModel.from(settings.modelPath, { autoInteract: false });
+      // 如果用户在加载期间又选择了新模型，丢弃旧请求，避免旧模型覆盖新模型
+      if (serial !== modelLoadSerial) {
+        nextModel.destroy();
+        return;
+      }
+      model = nextModel;
     } catch (e) {
       console.error("模型加载失败", e);
       // 兼容旧设置里的相对路径或失效路径：回退到默认模型
@@ -112,18 +122,31 @@
     });
   }
 
-  /** 播放随机动作；groupFilter 可传正则过滤动作组 */
-  function playRandomMotion(groupFilter) {
-    if (!model) return;
+  /** 播放模型自带动作；没有匹配组时才回退到其它动作，不凭空制造动作 */
+  function playRandomMotion(groupFilter, excludeFilter) {
+    if (!model) return false;
     try {
       const motions = model.internalModel.settings.motions || {};
-      let groups = Object.keys(motions).filter((g) => motions[g] && motions[g].length);
-      if (!groups.length) return;
-      let pool = groupFilter ? groups.filter((g) => groupFilter.test(g)) : groups;
-      if (!pool.length) pool = groups;
+      const groups = Object.keys(motions).filter((g) => motions[g] && motions[g].length);
+      if (!groups.length) return false;
+      let pool = groupFilter ? groups.filter((g) => groupFilter.test(g)) : groups.slice();
+      if (excludeFilter) pool = pool.filter((g) => !excludeFilter.test(g));
+      if (!pool.length && groupFilter) pool = groups.filter((g) => !excludeFilter || !excludeFilter.test(g));
+      if (!pool.length) return false;
       const g = pool[Math.floor(Math.random() * pool.length)];
       model.motion(g, Math.floor(Math.random() * motions[g].length));
-    } catch (_) {}
+      return true;
+    } catch (_) { return false; }
+  }
+
+  function playIdleMotion() {
+    // 优先使用模型实际存在的 idle/待机动作；否则从非待机组随机选择
+    return playRandomMotion(/idle|stand|wait|normal/i) || playRandomMotion(null, /walk|run|move|sleep|tap|touch/i);
+  }
+
+  function playWalkMotion() {
+    // 不要求模型必须命名为 walk：没有走路组时使用模型已有动作作为移动表现
+    return playRandomMotion(/walk|run|move/i) || playIdleMotion();
   }
 
   /** 播放随机表情 */
@@ -301,7 +324,7 @@
     switch (ai.mode) {
       case "idle":
         // 随机小动作 / 表情
-        if (Math.random() < 0.25) playRandomMotion();
+        if (Math.random() < 0.25) playIdleMotion();
         else if (Math.random() < 0.15) playRandomExpression();
 
         // 精力低 → 犯困
@@ -309,7 +332,7 @@
           ai.mode = "sleepy";
           ai.until = now + 15000 + Math.random() * 15000;
           speak(pick(behavior.sleepy_lines));
-          playRandomMotion(/sleep|sit|idle/i);
+          playRandomMotion(/sleep|sit/i) || playIdleMotion();
           break;
         }
         // 自言自语（间隔可配）
