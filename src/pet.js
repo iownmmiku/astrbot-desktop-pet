@@ -213,25 +213,47 @@
   // ---------- 拖拽移动 ----------
   let dragging = false, dragStartX = 0, dragStartY = 0;
   let dragWindowX = 0, dragWindowY = 0;
-  window.addEventListener("pointerdown", async (e) => {
+  let lastWindowX = 0, lastWindowY = 0;
+  let dragPending = null;
+  let dragFrame = 0;
+
+  function flushDrag() {
+    dragFrame = 0;
+    if (!dragging || !dragPending) return;
+    const p = dragPending;
+    dragPending = null;
+    // 每一帧最多移动一次窗口，避免 IPC 高频排队导致窗口视觉滞后/错位。
+    window.petAPI.moveTo(p.x, p.y);
+    lastWindowX = p.x; lastWindowY = p.y;
+  }
+
+  window.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || e.target.closest("#chat-panel,#status-panel,#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
-    // 使用拖动开始时的窗口坐标计算绝对目标，不连续累加 dx，避免窗口逐渐漂移。
-    const bounds = await window.petAPI.getBounds();
-    if (!bounds) return;
+    // 使用最近一次真实窗口坐标，避免 pointerdown 等待 IPC 返回期间继续漫游。
     dragging = true;
     dragStartX = e.screenX; dragStartY = e.screenY;
-    dragWindowX = bounds.x; dragWindowY = bounds.y;
+    dragWindowX = lastWindowX; dragWindowY = lastWindowY;
+    dragPending = null;
     idleSec = 0; ai.mode = "idle";
   });
   window.addEventListener("pointermove", (e) => {
     if (!dragging) return;
-    const nx = dragWindowX + e.screenX - dragStartX;
-    const ny = dragWindowY + e.screenY - dragStartY;
-    window.petAPI.moveTo(nx, ny);
-    cachedX = nx;
+    dragPending = {
+      x: dragWindowX + e.screenX - dragStartX,
+      y: dragWindowY + e.screenY - dragStartY,
+    };
+    if (!dragFrame) dragFrame = requestAnimationFrame(flushDrag);
   });
-  window.addEventListener("pointerup", () => (dragging = false));
-  window.addEventListener("pointercancel", () => (dragging = false));
+  function endDrag() {
+    dragging = false;
+    dragPending = null;
+    if (dragFrame) cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+    // 结束后立即以主进程真实位置校准漫游坐标。
+    syncPosition();
+  }
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
 
   window.addEventListener("dblclick", (e) => {
     if (e.target.closest("#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
@@ -431,6 +453,8 @@
       const [bounds, area] = await Promise.all([window.petAPI.getBounds(), window.petAPI.getWorkArea()]);
       if (bounds && area) {
         cachedX = bounds.x;
+        lastWindowX = bounds.x;
+        lastWindowY = bounds.y;
         screenLeft = area.x;
         screenW = area.width;
       }
