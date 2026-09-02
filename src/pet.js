@@ -99,22 +99,36 @@
   const canvasWrap = document.getElementById("canvas-wrap");
   // 禁用 Pixi resizeTo: window，改为显式 resize，避免透明窗口移动时
   // Canvas backing size、CSS 尺寸和 HTML 覆盖层在不同帧不同步。
-  const app = new PIXI.Application({ backgroundAlpha: 0, autoStart: true });
+  const app = new PIXI.Application({
+    backgroundAlpha: 0,
+    autoStart: true,
+    // 使用 CSS 像素而不是系统 DPI 物理像素，防止拖动窗口时整体放大。
+    resolution: 1,
+    autoDensity: false,
+  });
   app.view.style.display = "block";
   app.view.style.width = "100%";
   app.view.style.height = "100%";
   canvasWrap.appendChild(app.view);
 
-  function resizeRenderer() {
+  let canvasWidth = 0;
+  let canvasHeight = 0;
+  function resizeRenderer(force = false) {
+    // 移动原生窗口不应触发内容布局重算；拖动期间锁定渲染尺寸。
+    if (!force && dragging) return;
     const width = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
     const height = Math.max(1, document.documentElement.clientHeight || window.innerHeight);
+    if (!force && width === canvasWidth && height === canvasHeight) return;
+    canvasWidth = width;
+    canvasHeight = height;
     app.renderer.resize(width, height);
   }
-  resizeRenderer();
+  resizeRenderer(true);
 
   let model = null;
   let baseScaleX = 1;
   let pointerInsideModel = false;
+  let dragging = false;
 
   // 透明区域穿透：只有鼠标位于 Live2D 模型实际显示矩形内才接收点击。
   window.addEventListener("mousemove", (e) => {
@@ -162,6 +176,8 @@
   }
 
   function syncCanvasLayout() {
+    // 窗口拖动只是改变原生窗口位置，不允许触发模型缩放。
+    if (dragging) return;
     try {
       resizeRenderer();
       if (model) {
@@ -255,7 +271,7 @@
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   // ---------- 拖拽移动 ----------
-  let dragging = false, dragStartX = 0, dragStartY = 0;
+  let dragStartX = 0, dragStartY = 0;
   let dragWindowX = 0, dragWindowY = 0;
   let lastWindowX = 0, lastWindowY = 0;
   let dragPending = null;
