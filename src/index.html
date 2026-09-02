@@ -80,33 +80,7 @@
     <input id="chat-input" placeholder="和桌宠说点什么…" maxlength="200" />
     <button id="chat-send">发送</button>
   </div>
-  <div id="conn-dot" title="连接状态（双击打开设置）"></div>
-  <div id="settings-panel">
-    <h3>桌宠设置</h3>
-    <div class="row"><label>插件服务器（本地或远程，如 127.0.0.1:9898 或 wss://example.com:9898）</label>
-      <input type="text" id="set-server" placeholder="127.0.0.1:9898" /></div>
-    <div class="row"><label>连接令牌（插件 auth_token，未设置可留空）</label>
-      <input type="password" id="set-token" /></div>
-    <div class="row"><label>Live2D 模型（.model3.json 本地路径或 URL）</label>
-      <input type="text" id="set-model" /></div>
-    <div class="row"><label><input type="checkbox" id="set-roam" /> 允许桌宠自由走动</label></div>
-    <div class="row"><label>走动速度（像素/帧，0.2–10）</label>
-      <input type="text" id="set-walk-speed" /></div>
-    <div class="row"><label>犯困阈值（精力低于该值犯困，0–100）</label>
-      <input type="text" id="set-sleepy-threshold" /></div>
-    <div class="row"><label><input type="checkbox" id="set-chatter" /> 自言自语（空闲时随机说话）</label></div>
-    <div class="row"><label>自言自语最小间隔（秒）</label>
-      <input type="text" id="set-chatter-interval" /></div>
-    <div class="row"><label>自言自语台词池（每行一句）</label>
-      <textarea id="set-chatter-lines" rows="4"></textarea></div>
-    <div class="row"><label>犯困台词池（每行一句）</label>
-      <textarea id="set-sleepy-lines" rows="3"></textarea></div>
-    <div class="btns">
-      <button id="settings-cancel">取消</button>
-      <button id="settings-save">保存</button>
-    </div>
-    <div id="settings-hint">远程连接时，插件配置里 ws_host 需设为 0.0.0.0，且两台机器网络可达。</div>
-  </div>
+  <div id="conn-dot" title="连接状态（双击打开控制面板）"></div>
 
   <script src="../vendor/live2dcubismcore.min.js"></script>
   <script src="../node_modules/pixi.js/dist/pixi.min.js"></script>

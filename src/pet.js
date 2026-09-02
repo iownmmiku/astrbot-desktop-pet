@@ -1,20 +1,16 @@
 /* AstrBot 桌宠 - 渲染层：Live2D 展示 + 交互 + 随机行为 + 与插件通信（支持远程服务器） */
-(() => {
+(async () => {
   "use strict";
 
-  // ---------- 设置 ----------
+  // ---------- 设置（主进程 userData/settings.json 统一持久化） ----------
   const DEFAULTS = {
     server: "127.0.0.1:9898", // host:port 或完整 URL（http(s):// / ws(s)://），可填远程服务器
     token: "",
     modelPath: "../models/Haru/Haru.model3.json", // 任意 .model3.json（本地路径或 http URL）
+    scale: 1.0,
     petName: "桌宠",
   };
-  // 兼容旧版 localStorage 里的 host/port 字段
-  const saved = JSON.parse(localStorage.getItem("pet-settings") || "{}");
-  if (saved.host && !saved.server) saved.server = `${saved.host}:${saved.port || 9898}`;
-  const settings = Object.assign({}, DEFAULTS, saved);
-  delete settings.host; delete settings.port;
-  const saveSettings = () => localStorage.setItem("pet-settings", JSON.stringify(settings));
+  const settings = Object.assign({}, DEFAULTS, await window.petAPI.getSettings());
 
   // ---------- 行为配置（插件自动同步；本地缓存作离线回退） ----------
   const BEHAVIOR_DEFAULTS = {
@@ -60,7 +56,6 @@
   const chatSend = document.getElementById("chat-send");
   const statusPanel = document.getElementById("status-panel");
   const connDot = document.getElementById("conn-dot");
-  const settingsPanel = document.getElementById("settings-panel");
 
   let bubbleTimer = null;
   function speak(text, ms = 6000) {
@@ -85,7 +80,7 @@
       speak("模型加载失败啦……在设置里检查 model3.json 路径吧");
       return;
     }
-    const scale = Math.min((window.innerWidth * 0.9) / model.width, (window.innerHeight * 0.75) / model.height);
+    const scale = Math.min((window.innerWidth * 0.9) / model.width, (window.innerHeight * 0.75) / model.height) * (settings.scale || 1);
     model.scale.set(scale);
     baseScaleX = scale;
     model.anchor.set(0.5, 1);
@@ -231,71 +226,28 @@
     try { const r = await api("/api/action", { action }); renderState(r.state); } catch (_) {}
   }
 
-  // ---------- 设置面板 ----------
-  const splitLines = (t) => t.split("\n").map((s) => s.trim()).filter(Boolean);
-
-  function openSettings() {
-    document.getElementById("set-server").value = settings.server;
-    document.getElementById("set-token").value = settings.token;
-    document.getElementById("set-model").value = settings.modelPath;
-    document.getElementById("set-roam").checked = !!behavior.enable_roam;
-    document.getElementById("set-walk-speed").value = behavior.walk_speed;
-    document.getElementById("set-sleepy-threshold").value = behavior.sleepy_threshold;
-    document.getElementById("set-chatter").checked = !!behavior.enable_chatter;
-    document.getElementById("set-chatter-interval").value = behavior.chatter_interval_sec;
-    document.getElementById("set-chatter-lines").value = behavior.chatter_lines.join("\n");
-    document.getElementById("set-sleepy-lines").value = behavior.sleepy_lines.join("\n");
-    settingsPanel.style.display = "block";
-  }
-  document.getElementById("settings-cancel").addEventListener("click", () => (settingsPanel.style.display = "none"));
-  document.getElementById("settings-save").addEventListener("click", async () => {
-    const newServer = document.getElementById("set-server").value.trim();
-    const newModel = document.getElementById("set-model").value.trim();
-    const serverChanged = newServer && newServer !== settings.server;
-    const tokenChanged = document.getElementById("set-token").value !== settings.token;
-    settings.server = newServer || settings.server;
-    settings.token = document.getElementById("set-token").value;
-
-    // 行为配置：先本地生效并缓存，再回写插件（插件会广播给所有客户端）
-    applyBehavior({
-      enable_roam: document.getElementById("set-roam").checked,
-      walk_speed: parseFloat(document.getElementById("set-walk-speed").value),
-      sleepy_threshold: parseInt(document.getElementById("set-sleepy-threshold").value),
-      enable_chatter: document.getElementById("set-chatter").checked,
-      chatter_interval_sec: parseInt(document.getElementById("set-chatter-interval").value),
-      chatter_lines: splitLines(document.getElementById("set-chatter-lines").value),
-      sleepy_lines: splitLines(document.getElementById("set-sleepy-lines").value),
-    });
-    try {
-      const cfg = await api("/api/config", {
-        enable_roam: behavior.enable_roam,
-        walk_speed: behavior.walk_speed,
-        sleepy_threshold: behavior.sleepy_threshold,
-        enable_chatter: behavior.enable_chatter,
-        chatter_interval_sec: behavior.chatter_interval_sec,
-        chatter_lines: behavior.chatter_lines,
-        sleepy_lines: behavior.sleepy_lines,
-      });
-      applyBehavior(cfg); // 以插件校验后的结果为准
-    } catch (_) {
-      speak("插件未连接，行为配置仅保存在本地。");
+  // ---------- 设置（控制面板统一管理；变更实时应用） ----------
+  function applySettings(s) {
+    const serverChanged = s.server && s.server !== settings.server;
+    const tokenChanged = s.token !== undefined && s.token !== settings.token;
+    const modelChanged = (s.modelPath && s.modelPath !== settings.modelPath) ||
+      (s.scale !== undefined && s.scale !== settings.scale);
+    Object.assign(settings, s);
+    if (serverChanged || tokenChanged) {
+      if (ws) ws.close(); else connectWS();
     }
-
-    if (newModel && newModel !== settings.modelPath) {
-      settings.modelPath = newModel;
+    if (modelChanged) {
       if (model) { app.stage.removeChild(model); model.destroy(); model = null; }
       loadModel();
     }
-    saveSettings();
-    settingsPanel.style.display = "none";
-    if (serverChanged || tokenChanged) { if (ws) ws.close(); else connectWS(); }
-  });
+  }
+  window.petAPI.onSettingsChanged(applySettings);
 
   // ---------- 托盘命令 ----------
   window.petAPI.onOpenChat(() => toggleChat(true));
   window.petAPI.onAction((action) => fetchAction(action));
-  window.petAPI.onOpenSettings(openSettings);
-  connDot.addEventListener("dblclick", openSettings);
+  window.petAPI.onOpenSettings(() => window.petAPI.openPanel());
+  connDot.addEventListener("dblclick", () => window.petAPI.openPanel());
 
   // ---------- 随机行为 AI ----------
   // 状态机：idle（站着，随机小动作/表情/自言自语）→ walk（随机方向走动，遇边缘转身）

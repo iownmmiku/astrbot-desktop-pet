@@ -1,16 +1,44 @@
 // AstrBot 桌宠桌面端 - Electron 主进程
-// 透明无边框、置顶、可鼠标穿透的桌面宠物窗口 + 系统托盘
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage } = require("electron");
+// 完整桌面应用：控制面板窗口 + 桌宠窗口（透明无边框置顶）
+// 关闭控制面板时询问「最小化到托盘 / 退出程序」；未彻底退出前桌宠一直存在
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, dialog } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 const SMOKE = process.argv.includes("--smoke");
-let win = null;
+let petWin = null;    // 桌宠窗口
+let panelWin = null;  // 控制面板窗口
 let tray = null;
 let clickThrough = false;
+let isQuitting = false;
+let closeAction = null; // 记住的关闭动作: "minimize" | "quit" | null(每次询问)
 
-function createWindow() {
+// ---------------- 设置持久化（userData/settings.json） ----------------
+
+function settingsPath() {
+  return path.join(app.getPath("userData"), "settings.json");
+}
+function loadSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsPath(), "utf-8"));
+  } catch {
+    return {};
+  }
+}
+function saveSettings(s) {
+  try {
+    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
+    fs.writeFileSync(settingsPath(), JSON.stringify(s, null, 2), "utf-8");
+  } catch (e) {
+    console.error("设置保存失败", e);
+  }
+}
+
+// ---------------- 桌宠窗口 ----------------
+
+function createPetWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  win = new BrowserWindow({
+  petWin = new BrowserWindow({
     width: 320,
     height: 360,
     x: Math.round(width * 0.7),
@@ -25,23 +53,85 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      // 允许从 file:// 加载本地 Live2D 模型与贴图
-      webSecurity: false,
+      webSecurity: false, // 允许加载本地/远程 Live2D 模型
     },
   });
-  win.setAlwaysOnTop(true, "screen-saver");
-  win.loadFile(path.join(__dirname, "index.html"));
-  if (SMOKE) win.webContents.on("did-finish-load", () => {
+  petWin.setAlwaysOnTop(true, "screen-saver");
+  // 未彻底退出前，桌宠窗口不允许被关闭（Alt+F4 也拦截）
+  petWin.on("close", (e) => {
+    if (!isQuitting) e.preventDefault();
+  });
+  petWin.loadFile(path.join(__dirname, "index.html"));
+  if (SMOKE) petWin.webContents.on("did-finish-load", () => {
     console.log("SMOKE_OK");
     setTimeout(() => app.exit(0), 1500);
   });
 }
 
+// ---------------- 控制面板窗口 ----------------
+
+function createPanelWindow() {
+  if (panelWin) {
+    panelWin.show();
+    panelWin.focus();
+    return;
+  }
+  panelWin = new BrowserWindow({
+    width: 860,
+    height: 640,
+    minWidth: 760,
+    minHeight: 560,
+    title: "AstrBot 桌宠 - 控制面板",
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false, // 允许面板直连插件 API（含远程服务器）
+    },
+  });
+  panelWin.loadFile(path.join(__dirname, "panel.html"));
+
+  // 关闭时：询问最小化到托盘还是退出程序
+  panelWin.on("close", async (e) => {
+    if (isQuitting) return;
+    if (closeAction === "minimize") {
+      e.preventDefault();
+      panelWin.hide();
+      return;
+    }
+    if (closeAction === "quit") return; // 走默认关闭 → window-all-closed 退出
+
+    e.preventDefault();
+    const { response, checkboxChecked } = await dialog.showMessageBox(panelWin, {
+      type: "question",
+      buttons: ["最小化到托盘", "退出程序", "取消"],
+      defaultId: 0,
+      cancelId: 2,
+      title: "关闭",
+      message: "要最小化到托盘还是退出程序？",
+      detail: "最小化后桌宠会继续留在桌面上；只有彻底退出程序，桌宠才会消失。",
+      checkboxLabel: "记住我的选择",
+      checkboxChecked: false,
+    });
+    if (checkboxChecked && response !== 2) {
+      closeAction = response === 0 ? "minimize" : "quit";
+    }
+    if (response === 0) {
+      panelWin.hide();
+    } else if (response === 1) {
+      quitApp();
+    }
+  });
+  panelWin.on("closed", () => (panelWin = null));
+}
+
+// ---------------- 托盘 ----------------
+
 function createTray() {
-  // 16x16 透明占位图标（也可以换成自己的 logo.png）
-  const icon = nativeImage.createEmpty();
-  tray = new Tray(icon);
+  tray = new Tray(nativeImage.createEmpty());
   tray.setToolTip("AstrBot 桌宠");
+  tray.on("double-click", () => createPanelWindow());
   rebuildTrayMenu();
 }
 
@@ -49,51 +139,67 @@ function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "打开聊天", click: () => win && win.webContents.send("ui:open-chat") },
-      { label: "投喂 🍖", click: () => win && win.webContents.send("pet:action", "feed") },
-      { label: "摸摸头 🖐", click: () => win && win.webContents.send("pet:action", "play") },
-      { label: "洗澡 🛁", click: () => win && win.webContents.send("pet:action", "clean") },
-      { label: "睡觉 💤", click: () => win && win.webContents.send("pet:action", "sleep") },
+      { label: "打开控制面板", click: () => createPanelWindow() },
       { type: "separator" },
-      {
-        label: clickThrough ? "关闭鼠标穿透" : "开启鼠标穿透",
-        click: () => toggleClickThrough(),
-      },
-      {
-        label: "更换模型…",
-        click: () => win && win.webContents.send("ui:open-settings"),
-      },
+      { label: "打开聊天", click: () => petWin && petWin.webContents.send("ui:open-chat") },
+      { label: "投喂 🍖", click: () => petWin && petWin.webContents.send("pet:action", "feed") },
+      { label: "摸摸头 🖐", click: () => petWin && petWin.webContents.send("pet:action", "play") },
+      { label: "洗澡 🛁", click: () => petWin && petWin.webContents.send("pet:action", "clean") },
+      { label: "睡觉 💤", click: () => petWin && petWin.webContents.send("pet:action", "sleep") },
       { type: "separator" },
-      { label: "退出", click: () => app.quit() },
+      { label: clickThrough ? "关闭鼠标穿透" : "开启鼠标穿透", click: () => toggleClickThrough() },
+      { type: "separator" },
+      { label: "退出程序", click: () => quitApp() },
     ])
   );
 }
 
 function toggleClickThrough() {
   clickThrough = !clickThrough;
-  if (win) win.setIgnoreMouseEvents(clickThrough, { forward: true });
+  if (petWin) petWin.setIgnoreMouseEvents(clickThrough, { forward: true });
   rebuildTrayMenu();
+  return clickThrough;
 }
 
-// 渲染层拖拽/漫游移动窗口
+function quitApp() {
+  isQuitting = true;
+  app.quit();
+}
+
+// ---------------- IPC ----------------
+
 ipcMain.on("win:move-by", (_e, dx, dy) => {
-  if (!win) return;
-  const [x, y] = win.getPosition();
-  win.setPosition(Math.round(x + dx), Math.round(y + dy));
+  if (!petWin) return;
+  const [x, y] = petWin.getPosition();
+  petWin.setPosition(Math.round(x + dx), Math.round(y + dy));
 });
-
 ipcMain.on("win:move-to", (_e, x, y) => {
-  if (win) win.setPosition(Math.round(x), Math.round(y));
+  if (petWin) petWin.setPosition(Math.round(x), Math.round(y));
 });
-
-ipcMain.handle("win:get-bounds", () => (win ? win.getBounds() : null));
+ipcMain.handle("win:get-bounds", () => (petWin ? petWin.getBounds() : null));
 ipcMain.handle("screen:work-area", () => screen.getPrimaryDisplay().workAreaSize);
 ipcMain.on("win:toggle-click-through", () => toggleClickThrough());
-ipcMain.on("app:quit", () => app.quit());
+ipcMain.on("app:quit", () => quitApp());
+ipcMain.on("panel:open", () => createPanelWindow());
 
-app.whenReady().then(() => {
-  createWindow();
-  if (!SMOKE) createTray();
+// 设置读写：主进程统一持久化，变更后推给桌宠窗口
+ipcMain.handle("settings:get", () => loadSettings());
+ipcMain.handle("settings:set", (_e, s) => {
+  saveSettings(s || {});
+  if (petWin) petWin.webContents.send("settings:changed", loadSettings());
+  return true;
 });
 
-app.on("window-all-closed", () => app.quit());
+app.whenReady().then(() => {
+  createPetWindow();
+  if (!SMOKE) {
+    createTray();
+    createPanelWindow(); // 启动时显示控制面板
+  }
+});
+
+// 所有窗口关闭时才真正退出（桌宠窗口在 isQuitting 前不可关闭）
+app.on("window-all-closed", () => {
+  if (isQuitting || SMOKE) app.quit();
+});
+app.on("before-quit", () => (isQuitting = true));

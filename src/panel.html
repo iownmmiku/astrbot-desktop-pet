@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>AstrBot 桌宠 - 控制面板</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.6 "Microsoft YaHei", sans-serif; background: #1e1f24; color: #e8e8ec; }
+  header { padding: 14px 20px; background: #17181c; display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: 16px; margin: 0; flex: 1; }
+  #conn-badge { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #555; }
+  #conn-badge.ok { background: #2e7d32; }
+  #conn-badge.bad { background: #c62828; }
+  main { padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  section { background: #26272e; border-radius: 10px; padding: 14px 16px; }
+  section h2 { font-size: 14px; margin: 0 0 10px; color: #9fc3ff; }
+  .row { margin-bottom: 10px; }
+  label { display: block; font-size: 12px; color: #999; margin-bottom: 3px; }
+  input[type=text], input[type=password], input[type=number], textarea {
+    width: 100%; padding: 6px 10px; border: 1px solid #444; border-radius: 6px;
+    background: #1a1b1f; color: #eee; font: 13px "Microsoft YaHei", sans-serif; outline: none;
+  }
+  textarea { resize: vertical; }
+  input[type=range] { width: 100%; }
+  button { padding: 6px 16px; border: none; border-radius: 6px; background: #4a90d9; color: #fff; font: 13px "Microsoft YaHei", sans-serif; cursor: pointer; }
+  button.ghost { background: #3a3b42; }
+  button:hover { filter: brightness(1.1); }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .hint { font-size: 12px; color: #777; margin-top: 8px; }
+  .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+  .bar label { width: 36px; margin: 0; color: #bbb; }
+  .bar .track { flex: 1; height: 8px; background: #3a3b42; border-radius: 4px; overflow: hidden; }
+  .bar .fill { height: 100%; background: #6fcf6f; border-radius: 4px; transition: width .3s; }
+  .bar .val { width: 36px; text-align: right; color: #999; }
+  .full { grid-column: 1 / -1; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 18px; border-radius: 8px; font-size: 13px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🐾 AstrBot 桌宠 · 控制面板</h1>
+  <span id="conn-badge">未连接</span>
+</header>
+<main>
+  <section>
+    <h2>🔌 插件连接</h2>
+    <div class="row"><label>插件服务器（本地或远程，如 127.0.0.1:9898 或 wss://example.com:9898）</label>
+      <input type="text" id="server" placeholder="127.0.0.1:9898" /></div>
+    <div class="row"><label>连接令牌（插件 auth_token，未设置可留空）</label>
+      <input type="password" id="token" /></div>
+    <div class="btns">
+      <button id="save-conn">保存并连接</button>
+      <button id="test-conn" class="ghost">测试连接</button>
+    </div>
+    <div class="hint">远程连接时，插件 ws_host 需设为 0.0.0.0 并放行端口。</div>
+  </section>
+
+  <section>
+    <h2>🎨 形象（Live2D）</h2>
+    <div class="row"><label>模型 .model3.json（本地路径或 URL）</label>
+      <input type="text" id="model" /></div>
+    <div class="row"><label>缩放 <span id="scale-val">1.0</span>x</label>
+      <input type="range" id="scale" min="0.5" max="2" step="0.05" value="1" /></div>
+    <div class="btns"><button id="save-model">应用形象</button></div>
+    <div class="hint">支持任意 Live2D Cubism 3+ 模型；相对路径以应用内 src/ 为基准。</div>
+  </section>
+
+  <section>
+    <h2>📊 桌宠状态</h2>
+    <div id="state-bars"><div class="hint">连接插件后显示</div></div>
+    <div class="btns">
+      <button class="ghost act" data-a="feed">投喂 🍖</button>
+      <button class="ghost act" data-a="play">摸头 🖐</button>
+      <button class="ghost act" data-a="clean">洗澡 🛁</button>
+      <button class="ghost act" data-a="sleep">睡觉 💤</button>
+      <button class="ghost" id="refresh-state">刷新</button>
+    </div>
+  </section>
+
+  <section class="full">
+    <h2>⚙️ 行为配置（与插件自动同步，多端一致）</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+      <div class="row"><label><input type="checkbox" id="enable_roam" /> 允许自由走动</label></div>
+      <div class="row"><label><input type="checkbox" id="enable_chatter" /> 自言自语</label></div>
+      <div class="row"><label>走动速度（0.2–10）</label><input type="number" id="walk_speed" step="0.1" min="0.2" max="10" /></div>
+      <div class="row"><label>犯困阈值（0–100）</label><input type="number" id="sleepy_threshold" min="0" max="100" /></div>
+      <div class="row"><label>自言自语最小间隔（秒）</label><input type="number" id="chatter_interval_sec" min="5" /></div>
+    </div>
+    <div class="row"><label>自言自语台词池（每行一句）</label><textarea id="chatter_lines" rows="4"></textarea></div>
+    <div class="row"><label>犯困台词池（每行一句）</label><textarea id="sleepy_lines" rows="3"></textarea></div>
+    <div class="btns">
+      <button id="load-behavior" class="ghost">从插件读取</button>
+      <button id="save-behavior">保存到插件</button>
+    </div>
+    <div class="hint">保存后插件会广播给所有已连接的桌面端，实时生效。</div>
+  </section>
+
+  <section class="full">
+    <h2>ℹ️ 关于</h2>
+    <div class="hint">
+      关闭本窗口时可选择「最小化到托盘」或「退出程序」——只要程序没有彻底退出，桌宠就会一直待在桌面上。<br/>
+      插件仓库：github.com/iownmmiku/astrbot_plugin_desktop_pet ｜ 桌面端仓库：github.com/iownmmiku/astrbot-desktop-pet
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="panel.js"></script>
+</body>
+</html>
