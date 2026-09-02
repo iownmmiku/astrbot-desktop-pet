@@ -132,7 +132,16 @@
     } catch (_) {}
   });
   let fitScale = 1; // 窗口适配缩放（不含用户缩放倍率）
+  let modelBaseWidth = 0;
+  let modelBaseHeight = 0;
   let modelLoadSerial = 0;
+
+  function calculateFitScale() {
+    if (!model) return 1;
+    const width = modelBaseWidth || model.width;
+    const height = modelBaseHeight || model.height;
+    return Math.min((app.renderer.width * 0.9) / width, (app.renderer.height * 0.75) / height);
+  }
 
   /** 统一布局模型：模型和 HTML 气泡/菜单都以当前窗口内容区为坐标系。 */
   function layoutModel() {
@@ -156,7 +165,7 @@
     try {
       resizeRenderer();
       if (model) {
-        fitScale = Math.min((app.renderer.width * 0.9) / model.width, (app.renderer.height * 0.75) / model.height);
+        fitScale = calculateFitScale();
         applyScale();
       }
     } catch (_) {}
@@ -190,7 +199,10 @@
         return;
       }
     }
-    fitScale = Math.min((app.renderer.width * 0.9) / model.width, (app.renderer.height * 0.75) / model.height);
+    // 记录未缩放的模型尺寸；model.width/height 会随 scale 变化，不能用于后续重复计算。
+    modelBaseWidth = model.width;
+    modelBaseHeight = model.height;
+    fitScale = calculateFitScale();
     applyScale();
     layoutModel();
     model.eventMode = "static";
