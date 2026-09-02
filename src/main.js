@@ -10,6 +10,7 @@ let petWin = null;    // 桌宠窗口
 let panelWin = null;  // 控制面板窗口
 let tray = null;
 let clickThrough = false;
+let alwaysOnTop = true;
 let isQuitting = false;
 let closeAction = null; // 记住的关闭动作: "minimize" | "quit" | null(每次询问)
 
@@ -87,7 +88,7 @@ function createPetWindow() {
       webSecurity: false, // 允许加载本地/远程 Live2D 模型
     },
   });
-  petWin.setAlwaysOnTop(true, "screen-saver");
+  applyAlwaysOnTop(alwaysOnTop);
   // 未彻底退出前，桌宠窗口不允许被关闭（Alt+F4 也拦截）
   petWin.on("close", (e) => {
     if (!isQuitting) e.preventDefault();
@@ -183,11 +184,31 @@ function rebuildTrayMenu() {
       { label: "洗澡 🛁", click: () => petWin && petWin.webContents.send("pet:action", "clean") },
       { label: "睡觉 💤", click: () => petWin && petWin.webContents.send("pet:action", "sleep") },
       { type: "separator" },
+      {
+        label: "置顶显示", type: "checkbox", checked: alwaysOnTop,
+        click: (item) => {
+          applyAlwaysOnTop(item.checked);
+          const s = loadSettings();
+          s.alwaysOnTop = item.checked;
+          saveSettings(s);
+          if (petWin) petWin.webContents.send("settings:changed", s);
+        },
+      },
       { label: clickThrough ? "关闭鼠标穿透" : "开启鼠标穿透", click: () => toggleClickThrough() },
       { type: "separator" },
       { label: "退出程序", click: () => quitApp() },
     ])
   );
+}
+
+function applyAlwaysOnTop(on) {
+  alwaysOnTop = !!on;
+  if (petWin) {
+    petWin.setAlwaysOnTop(alwaysOnTop);
+    if (alwaysOnTop) petWin.setAlwaysOnTop(true, "screen-saver");
+  }
+  rebuildTrayMenu();
+  return alwaysOnTop;
 }
 
 function toggleClickThrough() {
@@ -215,6 +236,7 @@ ipcMain.on("win:move-to", (_e, x, y) => {
 ipcMain.handle("win:get-bounds", () => (petWin ? petWin.getBounds() : null));
 ipcMain.handle("screen:work-area", () => screen.getPrimaryDisplay().workAreaSize);
 ipcMain.on("win:toggle-click-through", () => toggleClickThrough());
+ipcMain.on("win:set-always-on-top", (_e, on) => applyAlwaysOnTop(on));
 ipcMain.on("app:quit", () => quitApp());
 ipcMain.on("panel:open", () => createPanelWindow());
 
@@ -273,11 +295,13 @@ function toFileUrl(p) {
 ipcMain.handle("settings:get", () => loadSettings());
 ipcMain.handle("settings:set", (_e, s) => {
   saveSettings(s || {});
+  if (s && s.alwaysOnTop !== undefined) applyAlwaysOnTop(!!s.alwaysOnTop);
   if (petWin) petWin.webContents.send("settings:changed", loadSettings());
   return true;
 });
 
 app.whenReady().then(() => {
+  alwaysOnTop = loadSettings().alwaysOnTop !== false; // 默认置顶
   createPetWindow();
   if (!SMOKE) {
     createTray();

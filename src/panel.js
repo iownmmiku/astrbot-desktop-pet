@@ -25,7 +25,7 @@
 
   // ---------- 设置读写 ----------
   let settings = Object.assign(
-    { server: "127.0.0.1:9898", token: "", modelPath: "", scale: 1.0 },
+    { server: "127.0.0.1:9898", token: "", modelPath: "", scale: 1.0, alwaysOnTop: true, randomMotion: true, motionIntervalSec: 8 },
     await window.petAPI.getSettings()
   );
   if (!settings.modelPath) {
@@ -38,14 +38,29 @@
     $("model").value = settings.modelPath;
     $("scale").value = settings.scale;
     $("scale-val").textContent = Number(settings.scale).toFixed(2);
+    $("alwaysOnTop").checked = settings.alwaysOnTop !== false;
+    $("randomMotion").checked = settings.randomMotion !== false;
+    $("motionIntervalSec").value = settings.motionIntervalSec || 8;
   }
   fillForm();
-  $("scale").addEventListener("input", () => ($("scale-val").textContent = Number($("scale").value).toFixed(2)));
+  $("scale").addEventListener("input", () => {
+    $("scale-val").textContent = Number($("scale").value).toFixed(2);
+    // 拖动滑条即时生效（同时写回设置，主进程持久化）
+    saveSettings({ scale: parseFloat($("scale").value) || 1 }, true);
+  });
+  $("save-display").addEventListener("click", async () => {
+    await saveSettings({
+      scale: parseFloat($("scale").value) || 1,
+      alwaysOnTop: $("alwaysOnTop").checked,
+      randomMotion: $("randomMotion").checked,
+      motionIntervalSec: Math.max(3, parseInt($("motionIntervalSec").value) || 8),
+    });
+  });
 
-  async function saveSettings(patch) {
+  async function saveSettings(patch, silent) {
     settings = Object.assign({}, settings, patch);
     await window.petAPI.setSettings(settings);
-    toast("已保存，桌宠端实时生效");
+    if (!silent) toast("已保存，桌宠端实时生效");
   }
 
   $("save-conn").addEventListener("click", async () => {

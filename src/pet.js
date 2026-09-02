@@ -8,6 +8,9 @@
     token: "",
     modelPath: "", // 留空则使用 data/models/Haru 默认模型
     scale: 1.0,
+    alwaysOnTop: true,
+    randomMotion: true, // 随机播放模型自带动作
+    motionIntervalSec: 8, // 随机动作最小间隔（秒）
     petName: "桌宠",
   };
   const settings = Object.assign({}, DEFAULTS, await window.petAPI.getSettings());
@@ -76,7 +79,16 @@
 
   let model = null;
   let baseScaleX = 1;
+  let fitScale = 1; // 窗口适配缩放（不含用户缩放倍率）
   let modelLoadSerial = 0;
+
+  /** 按 settings.scale 应用缩放（无需重载模型，可实时调整大小） */
+  function applyScale() {
+    if (!model) return;
+    const s = fitScale * (parseFloat(settings.scale) || 1);
+    baseScaleX = s;
+    model.scale.set(s * (ai.dir < 0 ? -1 : 1), s);
+  }
 
   async function loadModel() {
     const serial = ++modelLoadSerial;
@@ -105,9 +117,8 @@
         return;
       }
     }
-    const scale = Math.min((window.innerWidth * 0.9) / model.width, (window.innerHeight * 0.75) / model.height) * (settings.scale || 1);
-    model.scale.set(scale);
-    baseScaleX = scale;
+    fitScale = Math.min((window.innerWidth * 0.9) / model.width, (window.innerHeight * 0.75) / model.height);
+    applyScale();
     model.anchor.set(0.5, 1);
     model.x = window.innerWidth / 2;
     model.y = window.innerHeight - 6;
@@ -271,15 +282,21 @@
   function applySettings(s) {
     const serverChanged = s.server && s.server !== settings.server;
     const tokenChanged = s.token !== undefined && s.token !== settings.token;
-    const modelChanged = (s.modelPath && s.modelPath !== settings.modelPath) ||
-      (s.scale !== undefined && s.scale !== settings.scale);
+    const pathChanged = s.modelPath && s.modelPath !== settings.modelPath;
+    const scaleChanged = s.scale !== undefined && s.scale !== settings.scale;
+    const topChanged = s.alwaysOnTop !== undefined && s.alwaysOnTop !== settings.alwaysOnTop;
     Object.assign(settings, s);
     if (serverChanged || tokenChanged) {
       if (ws) ws.close(); else connectWS();
     }
-    if (modelChanged) {
+    if (topChanged) {
+      window.petAPI.setAlwaysOnTop(!!settings.alwaysOnTop);
+    }
+    if (pathChanged) {
       if (model) { app.stage.removeChild(model); model.destroy(); model = null; }
       loadModel();
+    } else if (scaleChanged) {
+      applyScale(); // 仅缩放变化时实时调整，不重载模型
     }
   }
   window.petAPI.onSettingsChanged(applySettings);
@@ -299,6 +316,7 @@
   const WIN_W = 320;
 
   let lastChatterAt = 0;
+  let lastMotionAt = 0;
 
   function setFacing(dir) {
     if (!model) return;
@@ -323,9 +341,14 @@
 
     switch (ai.mode) {
       case "idle":
-        // 随机小动作 / 表情
-        if (Math.random() < 0.25) playIdleMotion();
-        else if (Math.random() < 0.15) playRandomExpression();
+        // 随机播放模型自带动作（开关与最小间隔可在控制面板配置）
+        if (settings.randomMotion && now - lastMotionAt > Math.max(3, settings.motionIntervalSec || 8) * 1000) {
+          playRandomMotion() || playIdleMotion();
+          playRandomExpression();
+          lastMotionAt = now;
+        } else if (Math.random() < 0.15) {
+          playRandomExpression();
+        }
 
         // 精力低 → 犯困
         if (energy < behavior.sleepy_threshold) {
