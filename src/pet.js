@@ -110,9 +110,11 @@
       const b = model.getBounds();
       const inside = e.clientX >= b.x && e.clientX <= b.x + b.width &&
         e.clientY >= b.y && e.clientY <= b.y + b.height;
-      if (inside !== pointerInsideModel) {
+      const uiOpen = menuOpen || chatPanel.style.display === "flex" ||
+        sayPanel.style.display === "flex" || statusPanel.style.display === "block";
+      if (inside !== pointerInsideModel || uiOpen) {
         pointerInsideModel = inside;
-        window.petAPI.setMousePassthrough(!inside);
+        window.petAPI.setMousePassthrough(!(inside || uiOpen));
       }
     } catch (_) {}
   });
@@ -209,22 +211,27 @@
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   // ---------- 拖拽移动 ----------
-  let dragging = false, lastX = 0, lastY = 0;
-  window.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("#chat-panel,#status-panel,#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
-    dragging = true; lastX = e.screenX; lastY = e.screenY;
+  let dragging = false, dragStartX = 0, dragStartY = 0;
+  let dragWindowX = 0, dragWindowY = 0;
+  window.addEventListener("pointerdown", async (e) => {
+    if (e.button !== 0 || e.target.closest("#chat-panel,#status-panel,#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
+    // 使用拖动开始时的窗口坐标计算绝对目标，不连续累加 dx，避免窗口逐渐漂移。
+    const bounds = await window.petAPI.getBounds();
+    if (!bounds) return;
+    dragging = true;
+    dragStartX = e.screenX; dragStartY = e.screenY;
+    dragWindowX = bounds.x; dragWindowY = bounds.y;
     idleSec = 0; ai.mode = "idle";
   });
   window.addEventListener("pointermove", (e) => {
     if (!dragging) return;
-    const dx = e.screenX - lastX, dy = e.screenY - lastY;
-    if (dx || dy) {
-      lastX = e.screenX; lastY = e.screenY;
-      window.petAPI.moveBy(dx, dy);
-      cachedX += dx;
-    }
+    const nx = dragWindowX + e.screenX - dragStartX;
+    const ny = dragWindowY + e.screenY - dragStartY;
+    window.petAPI.moveTo(nx, ny);
+    cachedX = nx;
   });
   window.addEventListener("pointerup", () => (dragging = false));
+  window.addEventListener("pointercancel", () => (dragging = false));
 
   window.addEventListener("dblclick", (e) => {
     if (e.target.closest("#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
@@ -236,7 +243,13 @@
   const sayInput = document.getElementById("say-input");
   const saySend = document.getElementById("say-send");
 
-  function hideCtxMenu() { ctxMenu.style.display = "none"; }
+  let menuOpen = false;
+  function hideCtxMenu() {
+    menuOpen = false;
+    ctxMenu.style.display = "none";
+    // 菜单关闭后恢复透明区域穿透；鼠标移回模型时会再次开启模型交互。
+    window.petAPI.setMousePassthrough(true);
+  }
   function toggleSay(open) {
     sayPanel.style.display = open ? "flex" : "none";
     if (open) sayInput.focus();
@@ -258,6 +271,8 @@
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (e.target.closest("#chat-panel,#status-panel,#conn-dot,#say-panel")) return;
+    // 右键菜单打开后必须暂时关闭穿透，否则菜单按钮会被传给后面的窗口。
+    window.petAPI.setMousePassthrough(false);
     // 菜单显示在点击处，超出窗口边缘时向内收
     const mw = 150, mh = 300;
     const x = Math.min(e.clientX, window.innerWidth - mw - 6);
