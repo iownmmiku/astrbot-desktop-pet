@@ -36,18 +36,17 @@
 到 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载
 `AstrBotDesktopPet-x.y.z-win-x64.zip`，解压后运行其中的 exe 即可（无需安装 Node.js）。
 
-**分体结构**：exe 只是启动器，所有数据都在 exe 旁的 `data/` 目录里——
+**分体结构**：exe 只是启动器；用户数据存在系统用户目录，升级/替换 exe 不会丢失——
 
 ```
-AstrBotDesktopPet-x.y.z-portable.exe   ← 启动器
-data/
-├── settings.json      ← 全部设置（首次保存时生成）
-└── models/
-    ├── Haru/          ← 默认 Live2D 模型
-    └── <你解压的模型包>/ ← 通过控制面板选择 .wpk/.zip 后自动解压到这里
+AstrBotDesktopPet-x.y.z-portable.exe   ← 启动器（可随时换新）
+data/models/Haru/                      ← 随包发布的默认模型（只读资源）
+%APPDATA%/astrbot-desktop-pet/         ← 用户数据（升级 exe 不受影响）
+├── settings.json                      ← 全部设置
+└── models/<你解压的模型包>/            ← 控制面板选择 .wpk/.zip 后自动解压到这里
 ```
 
-模型可以随意手动增删替换，设置跟着文件夹走，整个目录拷到别的电脑也能直接用。
+exe 旁的 `data/models/` 里也可以自行添加模型文件夹；解压的模型包和设置都在用户目录，换版本不用重新填写。
 
 ### 方式二：源码运行
 

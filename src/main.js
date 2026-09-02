@@ -13,22 +13,31 @@ let clickThrough = false;
 let isQuitting = false;
 let closeAction = null; // 记住的关闭动作: "minimize" | "quit" | null(每次询问)
 
-// ---------------- 数据目录（分体结构：exe 只做启动器，数据全部外置） ----------------
-// 打包后：<exe 所在目录>/data/；开发时：项目根目录（desktop/）
-const DATA_DIR = app.isPackaged
-  ? path.join(path.dirname(app.getPath("exe")), "data")
-  : path.join(__dirname, "..");
+// ---------------- 数据目录 ----------------
+// 用户数据（设置、解压的模型包）存到系统用户目录（%APPDATA%），升级/替换 exe 不会丢失；
+// exe 旁的 data/models/ 只放随包发布的默认模型（只读资源）
+const RES_DIR = app.isPackaged ? path.dirname(app.getPath("exe")) : path.join(__dirname, "..");
 
-function dataDir() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  return DATA_DIR;
+function userDir() {
+  const d = app.getPath("userData");
+  fs.mkdirSync(d, { recursive: true });
+  return d;
 }
-ipcMain.handle("app:data-dir", () => dataDir());
+ipcMain.handle("app:data-dir", () => userDir());
 
-// ---------------- 设置持久化（data/settings.json） ----------------
+/** 默认模型（Haru）的 file URL：打包后在 exe 旁 data/models/Haru，开发时在项目 models/Haru */
+function defaultModelUrl() {
+  const p = app.isPackaged
+    ? path.join(RES_DIR, "data", "models", "Haru", "Haru.model3.json")
+    : path.join(RES_DIR, "models", "Haru", "Haru.model3.json");
+  return toFileUrl(p);
+}
+ipcMain.handle("app:default-model", () => defaultModelUrl());
+
+// ---------------- 设置持久化（userData/settings.json） ----------------
 
 function settingsPath() {
-  return path.join(dataDir(), "settings.json");
+  return path.join(userDir(), "settings.json");
 }
 function loadSettings() {
   try {
@@ -213,7 +222,7 @@ ipcMain.handle("dialog:pick-model", async () => {
     try {
       const AdmZip = require("adm-zip");
       const name = path.basename(picked).replace(/\.(wpk|zip)$/i, "");
-      const dest = path.join(dataDir(), "models", name);
+      const dest = path.join(userDir(), "models", name);
       fs.mkdirSync(dest, { recursive: true });
       new AdmZip(picked).extractAllTo(dest, true);
       const found = findModel3(dest);
@@ -241,7 +250,8 @@ function findModel3(dir) {
 }
 
 function toFileUrl(p) {
-  return "file:///" + p.replace(/\\/g, "/");
+  // encodeURI：路径含中文/空格时 fetch 才能正确加载
+  return "file:///" + encodeURI(p.replace(/\\/g, "/"));
 }
 
 // 设置读写：主进程统一持久化，变更后推给桌宠窗口

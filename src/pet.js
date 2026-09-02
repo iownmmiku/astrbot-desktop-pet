@@ -12,8 +12,7 @@
   };
   const settings = Object.assign({}, DEFAULTS, await window.petAPI.getSettings());
   if (!settings.modelPath) {
-    const dataDir = (await window.petAPI.getDataDir()).replace(/\\/g, "/");
-    settings.modelPath = "file:///" + dataDir + "/models/Haru/Haru.model3.json";
+    settings.modelPath = await window.petAPI.getDefaultModel();
   }
 
   // ---------- 行为配置（插件自动同步；本地缓存作离线回退） ----------
@@ -81,8 +80,20 @@
       model = await PIXI.live2d.Live2DModel.from(settings.modelPath, { autoInteract: false });
     } catch (e) {
       console.error("模型加载失败", e);
-      speak("模型加载失败啦……在设置里检查 model3.json 路径吧");
-      return;
+      // 兼容旧设置里的相对路径或失效路径：回退到默认模型
+      try {
+        const fallback = await window.petAPI.getDefaultModel();
+        if (settings.modelPath !== fallback) {
+          settings.modelPath = fallback;
+          model = await PIXI.live2d.Live2DModel.from(fallback, { autoInteract: false });
+        } else {
+          throw e;
+        }
+      } catch (e2) {
+        console.error("默认模型加载也失败", e2);
+        speak("模型加载失败啦……在控制面板里重新选择模型吧");
+        return;
+      }
     }
     const scale = Math.min((window.innerWidth * 0.9) / model.width, (window.innerHeight * 0.75) / model.height) * (settings.scale || 1);
     model.scale.set(scale);

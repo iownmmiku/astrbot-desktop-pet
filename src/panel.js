@@ -29,8 +29,7 @@
     await window.petAPI.getSettings()
   );
   if (!settings.modelPath) {
-    const dataDir = (await window.petAPI.getDataDir()).replace(/\\/g, "/");
-    settings.modelPath = "file:///" + dataDir + "/models/Haru/Haru.model3.json";
+    settings.modelPath = await window.petAPI.getDefaultModel();
   }
 
   function fillForm() {
