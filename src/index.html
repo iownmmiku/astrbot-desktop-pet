@@ -73,6 +73,33 @@
   #settings-save { background: #4a90d9; color: #fff; }
   #settings-cancel { background: #555; color: #eee; }
   #settings-hint { color: #888; font-size: 11px; margin-top: 6px; }
+
+  /* ---------- 右键菜单 ---------- */
+  #ctx-menu {
+    position: absolute; display: none; z-index: 30; min-width: 132px;
+    background: rgba(24,25,30,0.96); border: 1px solid #3a3c46; border-radius: 10px;
+    padding: 5px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); backdrop-filter: blur(6px);
+    font: 12px/1.6 "Microsoft YaHei", sans-serif;
+  }
+  #ctx-menu .item {
+    padding: 6px 12px; border-radius: 6px; color: #dde; cursor: pointer; white-space: nowrap;
+  }
+  #ctx-menu .item:hover { background: #2b5ea7; color: #fff; }
+  #ctx-menu .sep { height: 1px; background: #3a3c46; margin: 4px 6px; }
+
+  /* ---------- 让TA说 输入框 ---------- */
+  #say-panel {
+    position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
+    display: none; gap: 6px; z-index: 10;
+  }
+  #say-input {
+    width: 200px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 14px;
+    font: 13px "Microsoft YaHei", sans-serif; outline: none;
+  }
+  #say-send {
+    padding: 6px 12px; border: none; border-radius: 14px; background: #7b5ea7; color: #fff;
+    font: 13px "Microsoft YaHei", sans-serif; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -84,6 +111,23 @@
     <button id="chat-send">发送</button>
   </div>
   <div id="conn-dot" title="连接状态（双击打开控制面板）"></div>
+  <div id="say-panel">
+    <input id="say-input" placeholder="让桌宠说点什么…" maxlength="100" />
+    <button id="say-send">说</button>
+  </div>
+  <div id="ctx-menu">
+    <div class="item" data-act="feed">🍖 投喂</div>
+    <div class="item" data-act="play">🖐 摸摸头</div>
+    <div class="item" data-act="clean">🛁 洗澡</div>
+    <div class="item" data-act="sleep">💤 睡觉</div>
+    <div class="item" data-act="poke">👉 戳一戳</div>
+    <div class="sep"></div>
+    <div class="item" data-act="say">💬 让TA说…</div>
+    <div class="item" data-act="chat">✉️ 聊天</div>
+    <div class="item" data-act="status">📊 状态面板</div>
+    <div class="sep"></div>
+    <div class="item" data-act="panel">⚙️ 控制面板</div>
+  </div>
 
   <script src="../vendor/live2d.min.js"></script>
   <script src="../vendor/live2dcubismcore.min.js"></script>

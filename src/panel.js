@@ -25,7 +25,8 @@
 
   // ---------- 设置读写 ----------
   let settings = Object.assign(
-    { server: "127.0.0.1:9898", token: "", modelPath: "", scale: 1.0, alwaysOnTop: true, randomMotion: true, motionIntervalSec: 8 },
+    { server: "127.0.0.1:9898", token: "", modelPath: "", scale: 1.0, alwaysOnTop: true, randomMotion: true, motionIntervalSec: 8,
+      ttsEnabled: false, ttsVoice: "", ttsRate: 1.0, ttsVolume: 1.0 },
     await window.petAPI.getSettings()
   );
   if (!settings.modelPath) {
@@ -41,6 +42,12 @@
     $("alwaysOnTop").checked = settings.alwaysOnTop !== false;
     $("randomMotion").checked = settings.randomMotion !== false;
     $("motionIntervalSec").value = settings.motionIntervalSec || 8;
+    $("ttsEnabled").checked = !!settings.ttsEnabled;
+    $("ttsRate").value = settings.ttsRate || 1;
+    $("ttsRate-val").textContent = Number(settings.ttsRate || 1).toFixed(1);
+    $("ttsVolume").value = settings.ttsVolume ?? 1;
+    $("ttsVolume-val").textContent = Math.round((settings.ttsVolume ?? 1) * 100);
+    fillVoices();
   }
   fillForm();
   $("scale").addEventListener("input", () => {
@@ -77,6 +84,106 @@
     $("model").value = r.modelPath;
     await saveSettings({ modelPath: r.modelPath, scale: parseFloat($("scale").value) || 1 });
   });
+
+  // ---------- TTS ----------
+  function fillVoices() {
+    const sel = $("ttsVoice");
+    if (!window.speechSynthesis) {
+      sel.innerHTML = `<option value="">（当前环境不支持语音合成）</option>`;
+      return;
+    }
+    const voices = window.speechSynthesis.getVoices();
+    sel.innerHTML = `<option value="">（系统默认）</option>` +
+      voices.map((v) => `<option value="${v.name}"${v.name === settings.ttsVoice ? " selected" : ""}>${v.name}（${v.lang}）</option>`).join("");
+    if (!voices.length) sel.innerHTML = `<option value="">（未检测到可用语音）</option>`;
+  }
+  if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = fillVoices;
+  $("ttsRate").addEventListener("input", () => ($("ttsRate-val").textContent = Number($("ttsRate").value).toFixed(1)));
+  $("ttsVolume").addEventListener("input", () => ($("ttsVolume-val").textContent = Math.round($("ttsVolume").value * 100)));
+  $("tts-test").addEventListener("click", () => {
+    if (!window.speechSynthesis) { toast("当前环境不支持语音合成"); return; }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance("你好呀，我是你的桌宠！");
+    const v = window.speechSynthesis.getVoices().find((x) => x.name === $("ttsVoice").value);
+    if (v) u.voice = v;
+    u.rate = parseFloat($("ttsRate").value) || 1;
+    u.volume = parseFloat($("ttsVolume").value) ?? 1;
+    window.speechSynthesis.speak(u);
+  });
+  $("save-tts").addEventListener("click", async () => {
+    await saveSettings({
+      ttsEnabled: $("ttsEnabled").checked,
+      ttsVoice: $("ttsVoice").value,
+      ttsRate: parseFloat($("ttsRate").value) || 1,
+      ttsVolume: parseFloat($("ttsVolume").value) ?? 1,
+    });
+  });
+
+  // ---------- 人格对话 ----------
+  function togglePersonaRows() {
+    const src = $("persona_source").value;
+    $("row-persona-id").style.display = src === "persona" ? "block" : "none";
+    $("row-persona-custom").style.display = src === "custom" ? "block" : "none";
+  }
+  $("persona_source").addEventListener("change", togglePersonaRows);
+
+  async function loadPersonaList(selectId) {
+    try {
+      const resp = await fetch(httpBase() + "/api/personas", { headers: headers() });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const list = data.personas || [];
+      const sel = $("astrbot_persona_id");
+      sel.innerHTML = list.length
+        ? list.map((p) => `<option value="${p.id}"${p.id === selectId ? " selected" : ""}>${p.name}</option>`).join("")
+        : `<option value="">（AstrBot 里还没有已配置人格）</option>`;
+      if (selectId && !list.some((p) => p.id === selectId)) {
+        sel.innerHTML = `<option value="${selectId}" selected>${selectId}（当前）</option>` + sel.innerHTML;
+      }
+    } catch (e) {
+      toast("获取人格列表失败：" + e.message);
+    }
+  }
+
+  async function loadPersona() {
+    try {
+      const resp = await fetch(httpBase() + "/api/config", { headers: headers() });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const cfg = await resp.json();
+      $("persona_source").value = cfg.persona_source || "custom";
+      $("persona").value = cfg.persona || "";
+      $("pet_name").value = cfg.pet_name || "桌宠";
+      $("llm_action_reply").checked = cfg.llm_action_reply !== false;
+      togglePersonaRows();
+      await loadPersonaList(cfg.astrbot_persona_id || "");
+      toast("已从插件读取人格配置");
+    } catch (e) {
+      toast("读取失败：" + e.message);
+    }
+  }
+
+  async function savePersona() {
+    const cfg = {
+      persona_source: $("persona_source").value,
+      astrbot_persona_id: $("astrbot_persona_id").value,
+      persona: $("persona").value,
+      pet_name: $("pet_name").value.trim() || "桌宠",
+      llm_action_reply: $("llm_action_reply").checked,
+    };
+    try {
+      const resp = await fetch(httpBase() + "/api/config", {
+        method: "POST", headers: headers(), body: JSON.stringify(cfg),
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      toast("已保存到插件并广播给所有客户端");
+    } catch (e) {
+      toast("保存失败：" + e.message);
+    }
+  }
+
+  $("load-persona").addEventListener("click", loadPersona);
+  $("save-persona").addEventListener("click", savePersona);
+  $("refresh-personas").addEventListener("click", () => loadPersonaList($("astrbot_persona_id").value));
 
   // ---------- 插件 API ----------
   function httpBase() {
@@ -191,5 +298,7 @@
   setBadge(null, "连接中…");
   refreshState();
   loadBehavior();
+  loadPersona();
+  togglePersonaRows();
   setInterval(refreshState, 10000); // 状态每 10 秒自动刷新
 })();

@@ -225,13 +225,27 @@ function quitApp() {
 
 // ---------------- IPC ----------------
 
+/** 把目标位置钳制在所在显示器工作区内，防止桌宠被移出屏幕 */
+function clampToWorkArea(x, y) {
+  const area = screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) }).workArea;
+  const w = petWin ? petWin.getBounds().width : 320;
+  const h = petWin ? petWin.getBounds().height : 360;
+  return [
+    Math.min(Math.max(Math.round(x), area.x), area.x + area.width - w),
+    Math.min(Math.max(Math.round(y), area.y), area.y + area.height - h),
+  ];
+}
+
 ipcMain.on("win:move-by", (_e, dx, dy) => {
   if (!petWin) return;
   const [x, y] = petWin.getPosition();
-  petWin.setPosition(Math.round(x + dx), Math.round(y + dy));
+  const [nx, ny] = clampToWorkArea(x + dx, y + dy);
+  petWin.setPosition(nx, ny);
 });
 ipcMain.on("win:move-to", (_e, x, y) => {
-  if (petWin) petWin.setPosition(Math.round(x), Math.round(y));
+  if (!petWin) return;
+  const [nx, ny] = clampToWorkArea(x, y);
+  petWin.setPosition(nx, ny);
 });
 ipcMain.handle("win:get-bounds", () => (petWin ? petWin.getBounds() : null));
 ipcMain.handle("screen:work-area", () => screen.getPrimaryDisplay().workAreaSize);

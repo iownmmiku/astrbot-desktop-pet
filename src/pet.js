@@ -11,6 +11,10 @@
     alwaysOnTop: true,
     randomMotion: true, // 随机播放模型自带动作
     motionIntervalSec: 8, // 随机动作最小间隔（秒）
+    ttsEnabled: false,  // 文字转语音
+    ttsVoice: "",
+    ttsRate: 1.0,
+    ttsVolume: 1.0,
     petName: "桌宠",
   };
   const settings = Object.assign({}, DEFAULTS, await window.petAPI.getSettings());
@@ -66,11 +70,29 @@
   const connDot = document.getElementById("conn-dot");
 
   let bubbleTimer = null;
-  function speak(text, ms = 6000) {
+  function speak(text, ms = 6000, noTts = false) {
     bubble.textContent = text;
     bubble.classList.add("show");
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(() => bubble.classList.remove("show"), ms);
+    if (!noTts) tts(text);
+  }
+
+  // ---------- 文字转语音（Web Speech API） ----------
+  function tts(text) {
+    try {
+      if (!settings.ttsEnabled || !window.speechSynthesis || !text) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(String(text).slice(0, 200));
+      const voices = window.speechSynthesis.getVoices();
+      const v = voices.find((x) => x.name === settings.ttsVoice);
+      if (v) u.voice = v;
+      const rate = parseFloat(settings.ttsRate);
+      const vol = parseFloat(settings.ttsVolume);
+      u.rate = isNaN(rate) ? 1 : Math.max(0.5, Math.min(2, rate));
+      u.volume = isNaN(vol) ? 1 : Math.max(0, Math.min(1, vol));
+      window.speechSynthesis.speak(u);
+    } catch (_) {}
   }
 
   // ---------- PIXI / Live2D ----------
@@ -174,7 +196,7 @@
   // ---------- 拖拽移动 ----------
   let dragging = false, lastX = 0, lastY = 0;
   window.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("#chat-panel,#status-panel,#conn-dot,#settings-panel")) return;
+    if (e.target.closest("#chat-panel,#status-panel,#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
     dragging = true; lastX = e.screenX; lastY = e.screenY;
     idleSec = 0; ai.mode = "idle";
   });
@@ -190,12 +212,59 @@
   window.addEventListener("pointerup", () => (dragging = false));
 
   window.addEventListener("dblclick", (e) => {
-    if (e.target.closest("#conn-dot,#settings-panel")) return;
+    if (e.target.closest("#conn-dot,#settings-panel,#ctx-menu,#say-panel")) return;
     toggleChat(true);
   });
+  // ---------- 右键菜单 ----------
+  const ctxMenu = document.getElementById("ctx-menu");
+  const sayPanel = document.getElementById("say-panel");
+  const sayInput = document.getElementById("say-input");
+  const saySend = document.getElementById("say-send");
+
+  function hideCtxMenu() { ctxMenu.style.display = "none"; }
+  function toggleSay(open) {
+    sayPanel.style.display = open ? "flex" : "none";
+    if (open) sayInput.focus();
+  }
+  function sendSay() {
+    const text = sayInput.value.trim();
+    if (!text) return;
+    sayInput.value = "";
+    toggleSay(false);
+    speak(text);          // 气泡显示 + TTS 朗读
+    playRandomExpression();
+  }
+  saySend.addEventListener("click", sendSay);
+  sayInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendSay();
+    if (e.key === "Escape") toggleSay(false);
+  });
+
   window.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    statusPanel.style.display = statusPanel.style.display === "block" ? "none" : "block";
+    if (e.target.closest("#chat-panel,#status-panel,#conn-dot,#say-panel")) return;
+    // 菜单显示在点击处，超出窗口边缘时向内收
+    const mw = 150, mh = 300;
+    const x = Math.min(e.clientX, window.innerWidth - mw - 6);
+    const y = Math.min(e.clientY, window.innerHeight - mh - 6);
+    ctxMenu.style.left = Math.max(4, x) + "px";
+    ctxMenu.style.top = Math.max(4, y) + "px";
+    ctxMenu.style.display = "block";
+  });
+  window.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest("#ctx-menu")) hideCtxMenu();
+  }, true);
+  ctxMenu.addEventListener("click", (e) => {
+    const item = e.target.closest(".item");
+    if (!item) return;
+    hideCtxMenu();
+    const act = item.dataset.act;
+    if (act === "chat") toggleChat(true);
+    else if (act === "say") toggleSay(true);
+    else if (act === "status") statusPanel.style.display = statusPanel.style.display === "block" ? "none" : "block";
+    else if (act === "panel") window.petAPI.openPanel();
+    else if (act === "poke") { playRandomMotion(/tap/i); fetchAction("poke"); }
+    else fetchAction(act);
   });
 
   function toggleChat(open) {
@@ -259,7 +328,7 @@
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = "";
-    speak("你：" + text);
+    speak("你：" + text, 6000, true);
     try {
       const r = await api("/api/chat", { text });
       renderState(r.state);

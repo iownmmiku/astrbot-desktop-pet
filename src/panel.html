@@ -40,7 +40,7 @@
   .row { margin-bottom: 12px; }
   .row:last-child { margin-bottom: 0; }
   label { display: block; font-size: 12px; color: #999; margin-bottom: 4px; }
-  input[type=text], input[type=password], input[type=number], textarea {
+  input[type=text], input[type=password], input[type=number], textarea, select {
     width: 100%; padding: 8px 12px; border: 1px solid #363947; border-radius: 8px;
     background: #14151a; color: #eee; font: 13px "Microsoft YaHei", sans-serif; outline: none;
     transition: border-color .15s;
@@ -77,6 +77,7 @@
   <button class="tab active" data-page="conn">🔌 插件连接</button>
   <button class="tab" data-page="model">🎨 形象模型</button>
   <button class="tab" data-page="state">📊 桌宠状态</button>
+  <button class="tab" data-page="persona">🎭 人格对话</button>
   <button class="tab" data-page="behavior">⚙️ 行为配置</button>
   <button class="tab" data-page="about">ℹ️ 关于</button>
   <div class="spacer"></div>
@@ -130,6 +131,23 @@
         <button id="save-display">应用显示设置</button>
       </div>
     </div>
+    <div class="card">
+      <h3>语音（文字转语音 TTS）</h3>
+      <div class="row"><label><input type="checkbox" id="ttsEnabled" /> 启用语音朗读（气泡文字会读出来）</label></div>
+      <div class="row"><label>语音</label>
+        <select id="ttsVoice"></select></div>
+      <div class="grid2">
+        <div class="row"><label>语速 <span id="ttsRate-val">1.0</span></label>
+          <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" value="1" /></div>
+        <div class="row"><label>音量 <span id="ttsVolume-val">100</span>%</label>
+          <input type="range" id="ttsVolume" min="0" max="1" step="0.05" value="1" /></div>
+      </div>
+      <div class="btns">
+        <button id="tts-test" class="ghost">🔊 试听</button>
+        <button id="save-tts">保存语音设置</button>
+      </div>
+      <div class="hint">语音列表来自系统（Windows SAPI）。若列表为空，说明当前环境没有可用语音。</div>
+    </div>
   </div>
 
   <!-- 桌宠状态 -->
@@ -146,6 +164,35 @@
         <button class="ghost act" data-a="sleep">睡觉 💤</button>
         <button class="ghost" id="refresh-state">🔄 刷新</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 人格对话 -->
+  <div class="page" id="page-persona">
+    <h2>人格对话</h2>
+    <div class="sub">选择桌宠的人格来源；选择 AstrBot 人格后，闲聊、投喂等互动都会按该人格生成对话</div>
+    <div class="card">
+      <h3>人格来源</h3>
+      <div class="row"><label>来源</label>
+        <select id="persona_source">
+          <option value="custom">插件自定义人格</option>
+          <option value="persona">AstrBot 已配置人格</option>
+          <option value="default">AstrBot 默认人格</option>
+        </select></div>
+      <div class="row" id="row-persona-id" style="display:none"><label>选择 AstrBot 人格</label>
+        <div style="display:flex;gap:8px">
+          <select id="astrbot_persona_id" style="flex:1"></select>
+          <button id="refresh-personas" class="ghost" type="button">刷新</button>
+        </div></div>
+      <div class="row" id="row-persona-custom"><label>自定义人格（system prompt）</label>
+        <textarea id="persona" rows="5"></textarea></div>
+      <div class="row"><label>桌宠名字</label><input type="text" id="pet_name" /></div>
+      <div class="row"><label><input type="checkbox" id="llm_action_reply" checked /> 互动回复由大模型生成（投喂/摸头/洗澡/睡觉/戳一戳按人格说话）</label></div>
+      <div class="btns">
+        <button id="load-persona" class="ghost">从插件读取</button>
+        <button id="save-persona">保存到插件</button>
+      </div>
+      <div class="hint">保存后立即生效；人格变更会清空桌宠端对话上下文。</div>
     </div>
   </div>
 
@@ -179,7 +226,7 @@
   <!-- 关于 -->
   <div class="page" id="page-about">
     <h2>关于</h2>
-    <div class="sub">AstrBot 桌宠桌面端 v0.4.5</div>
+    <div class="sub">AstrBot 桌宠桌面端 v0.5.0</div>
     <div class="card">
       <div class="hint" style="margin-top:0">
         关闭本窗口时可选择「最小化到托盘」或「退出程序」——只要程序没有彻底退出，桌宠就会一直待在桌面上。<br/><br/>
