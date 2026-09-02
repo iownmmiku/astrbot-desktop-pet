@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("petAPI", {
   getWorkArea: () => ipcRenderer.invoke("screen:work-area"),
   toggleClickThrough: () => ipcRenderer.send("win:toggle-click-through"),
   setAlwaysOnTop: (on) => ipcRenderer.send("win:set-always-on-top", on),
+  setMousePassthrough: (passthrough) => ipcRenderer.send("win:set-mouse-passthrough", passthrough),
   quit: () => ipcRenderer.send("app:quit"),
   openPanel: () => ipcRenderer.send("panel:open"),
   pickModel: () => ipcRenderer.invoke("dialog:pick-model"),

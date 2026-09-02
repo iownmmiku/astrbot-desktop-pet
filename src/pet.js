@@ -101,6 +101,21 @@
 
   let model = null;
   let baseScaleX = 1;
+  let pointerInsideModel = false;
+
+  // 透明区域穿透：只有鼠标位于 Live2D 模型实际显示矩形内才接收点击。
+  window.addEventListener("mousemove", (e) => {
+    if (!model || dragging) return;
+    try {
+      const b = model.getBounds();
+      const inside = e.clientX >= b.x && e.clientX <= b.x + b.width &&
+        e.clientY >= b.y && e.clientY <= b.y + b.height;
+      if (inside !== pointerInsideModel) {
+        pointerInsideModel = inside;
+        window.petAPI.setMousePassthrough(!inside);
+      }
+    } catch (_) {}
+  });
   let fitScale = 1; // 窗口适配缩放（不含用户缩放倍率）
   let modelLoadSerial = 0;
 
@@ -381,8 +396,9 @@
   //        → sleepy（精力低时犯困）→ 循环
   const ai = { mode: "idle", dir: 1, until: 0 };
   let idleSec = 0;
-  let cachedX = 0, screenW = 1920;
+  let cachedX = 0, screenLeft = 0, screenW = 1920;
   const WIN_W = 320;
+  let positionSyncBusy = false;
 
   let lastChatterAt = 0;
   let lastMotionAt = 0;
@@ -393,11 +409,25 @@
     model.scale.x = baseScaleX * (dir < 0 ? -1 : 1);
   }
 
-  async function initScreenInfo() {
+  async function syncPosition() {
+    if (positionSyncBusy || dragging) return;
+    positionSyncBusy = true;
     try {
       const [bounds, area] = await Promise.all([window.petAPI.getBounds(), window.petAPI.getWorkArea()]);
-      cachedX = bounds.x; screenW = area.width;
-    } catch (_) {}
+      if (bounds && area) {
+        cachedX = bounds.x;
+        screenLeft = area.x;
+        screenW = area.width;
+      }
+    } catch (_) {} finally {
+      positionSyncBusy = false;
+    }
+  }
+
+  async function initScreenInfo() {
+    await syncPosition();
+    // 主进程负责最终钳制；这里定期用真实窗口坐标校准缓存，避免小数移动/拖动/多屏导致漂移。
+    setInterval(syncPosition, 500);
   }
 
   // 每秒决策一次
@@ -468,10 +498,12 @@
     const dx = ai.dir * behavior.walk_speed;
     cachedX += dx;
     // 到达屏幕边缘：转身，偶尔直接停下
-    if (cachedX <= 0) {
-      cachedX = 0; setFacing(1);
-    } else if (cachedX >= screenW - WIN_W) {
-      cachedX = screenW - WIN_W; setFacing(-1);
+    const minX = screenLeft;
+    const maxX = screenLeft + screenW - WIN_W;
+    if (cachedX <= minX) {
+      cachedX = minX; setFacing(1);
+    } else if (cachedX >= maxX) {
+      cachedX = maxX; setFacing(-1);
     } else if (Math.random() < 0.003) {
       setFacing(-ai.dir); // 随机转身
     }

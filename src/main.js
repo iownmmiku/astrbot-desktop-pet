@@ -10,6 +10,7 @@ let petWin = null;    // 桌宠窗口
 let panelWin = null;  // 控制面板窗口
 let tray = null;
 let clickThrough = false;
+let modelHitTest = false; // 当前是否允许模型区域交互
 let alwaysOnTop = true;
 let isQuitting = false;
 let closeAction = null; // 记住的关闭动作: "minimize" | "quit" | null(每次询问)
@@ -93,6 +94,8 @@ function createPetWindow() {
   petWin.on("close", (e) => {
     if (!isQuitting) e.preventDefault();
   });
+  // 透明区域默认不拦截鼠标；渲染层检测到模型区域后会临时恢复交互。
+  petWin.setIgnoreMouseEvents(true, { forward: true });
   petWin.loadFile(path.join(__dirname, "index.html"));
   if (SMOKE) petWin.webContents.on("did-finish-load", () => {
     console.log("SMOKE_OK");
@@ -211,9 +214,19 @@ function applyAlwaysOnTop(on) {
   return alwaysOnTop;
 }
 
+function setMousePassthrough(passthrough) {
+  if (!petWin) return;
+  modelHitTest = !passthrough;
+  // forward=true 让渲染层仍能收到 mousemove，从而在模型区域恢复交互。
+  petWin.setIgnoreMouseEvents(!!passthrough || clickThrough, { forward: true });
+}
+
 function toggleClickThrough() {
   clickThrough = !clickThrough;
-  if (petWin) petWin.setIgnoreMouseEvents(clickThrough, { forward: true });
+  if (petWin) {
+    // 手动关闭穿透时恢复完整交互；再次开启时完全穿透。
+    petWin.setIgnoreMouseEvents(clickThrough, { forward: true });
+  }
   rebuildTrayMenu();
   return clickThrough;
 }
@@ -248,9 +261,16 @@ ipcMain.on("win:move-to", (_e, x, y) => {
   petWin.setPosition(nx, ny);
 });
 ipcMain.handle("win:get-bounds", () => (petWin ? petWin.getBounds() : null));
-ipcMain.handle("screen:work-area", () => screen.getPrimaryDisplay().workAreaSize);
+ipcMain.handle("screen:work-area", () => {
+  const b = petWin ? petWin.getBounds() : { x: 0, y: 0 };
+  return screen.getDisplayNearestPoint({ x: b.x, y: b.y }).workArea;
+});
 ipcMain.on("win:toggle-click-through", () => toggleClickThrough());
 ipcMain.on("win:set-always-on-top", (_e, on) => applyAlwaysOnTop(on));
+ipcMain.on("win:set-mouse-passthrough", (_e, passthrough) => {
+  if (clickThrough) return;
+  setMousePassthrough(!!passthrough);
+});
 ipcMain.on("app:quit", () => quitApp());
 ipcMain.on("panel:open", () => createPanelWindow());
 
