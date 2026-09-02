@@ -40,9 +40,19 @@ function settingsPath() {
   return path.join(userDir(), "settings.json");
 }
 function loadSettings() {
+  const current = settingsPath();
   try {
-    return JSON.parse(fs.readFileSync(settingsPath(), "utf-8"));
+    return JSON.parse(fs.readFileSync(current, "utf-8"));
   } catch {
+    // 兼容 v0.4.0/v0.4.1：旧设置在 exe 旁 data/settings.json，首次启动自动迁移
+    const legacy = path.join(RES_DIR, "data", "settings.json");
+    if (legacy !== current) {
+      try {
+        const data = JSON.parse(fs.readFileSync(legacy, "utf-8"));
+        saveSettings(data);
+        return data;
+      } catch (_) {}
+    }
     return {};
   }
 }
@@ -121,7 +131,12 @@ function createPanelWindow() {
       panelWin.hide();
       return;
     }
-    if (closeAction === "quit") return; // 走默认关闭 → window-all-closed 退出
+    if (closeAction === "quit") {
+      // 桌宠窗口仍然存在，单纯放行 panel close 不会触发 window-all-closed；必须主动退出
+      e.preventDefault();
+      quitApp();
+      return;
+    }
 
     e.preventDefault();
     const { response, checkboxChecked } = await dialog.showMessageBox(panelWin, {
@@ -209,7 +224,7 @@ ipcMain.handle("dialog:pick-model", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
     title: "选择 Live2D 模型或模型包",
     filters: [
-      { name: "Live2D 模型 / 模型包", extensions: ["model3.json", "wpk", "zip"] },
+      { name: "Live2D 模型 / 模型包", extensions: ["model3.json", "model.json", "wpk", "zip"] },
       { name: "所有文件", extensions: ["*"] },
     ],
     properties: ["openFile"],
