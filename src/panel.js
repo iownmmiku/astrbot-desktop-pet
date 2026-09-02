@@ -3,6 +3,16 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+
+  // ---------- 标签页切换 ----------
+  document.querySelectorAll("nav button.tab").forEach((t) =>
+    t.addEventListener("click", () => {
+      document.querySelectorAll("nav button.tab").forEach((x) => x.classList.remove("active"));
+      document.querySelectorAll(".page").forEach((x) => x.classList.remove("active"));
+      t.classList.add("active");
+      $("page-" + t.dataset.page).classList.add("active");
+    })
+  );
   const badge = $("conn-badge");
   const toastEl = $("toast");
   let toastTimer = null;
@@ -85,12 +95,18 @@
     }
   }
 
+  function barColor(v) {
+    return v < 25 ? "#e05252" : v < 55 ? "#e0a44a" : "#58c472";
+  }
+
   function renderState(s) {
     if (!s) return;
-    const bar = (label, v) =>
-      `<div class="bar"><label>${label}</label><div class="track"><div class="fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div><span class="val">${Math.round(v)}</span></div>`;
+    const bar = (label, v) => {
+      const w = Math.max(0, Math.min(100, v));
+      return `<div class="bar"><label>${label}</label><div class="track"><div class="fill" style="width:${w}%;background:${barColor(w)}"></div></div><span class="val">${Math.round(v)}</span></div>`;
+    };
+    $("state-lvl").innerHTML = `<span class="lvl">Lv.${s.level}<small>经验 ${s.exp}/${s.level * 100}</small></span>`;
     $("state-bars").innerHTML =
-      `<div class="bar"><b>Lv.${s.level}</b><span class="hint">经验 ${s.exp}/${s.level * 100}</span></div>` +
       bar("心情", s.mood) + bar("饱食", s.satiety) + bar("清洁", s.cleanliness) + bar("精力", s.energy);
   }
 
@@ -161,4 +177,5 @@
   setBadge(null, "连接中…");
   refreshState();
   loadBehavior();
+  setInterval(refreshState, 10000); // 状态每 10 秒自动刷新
 })();

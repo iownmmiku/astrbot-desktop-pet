@@ -64,9 +64,9 @@
   let bubbleTimer = null;
   function speak(text, ms = 6000) {
     bubble.textContent = text;
-    bubble.style.display = "block";
+    bubble.classList.add("show");
     clearTimeout(bubbleTimer);
-    bubbleTimer = setTimeout(() => (bubble.style.display = "none"), ms);
+    bubbleTimer = setTimeout(() => bubble.classList.remove("show"), ms);
   }
 
   // ---------- PIXI / Live2D ----------
@@ -163,8 +163,11 @@
   function renderState(s) {
     if (!s) return;
     petState = s;
-    const bar = (label, v) =>
-      `<div class="bar"><label>${label}</label><div class="track"><div class="fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div></div>`;
+    const barColor = (v) => (v < 25 ? "#e05252" : v < 55 ? "#e0a44a" : "#58c472");
+    const bar = (label, v) => {
+      const w = Math.max(0, Math.min(100, v));
+      return `<div class="bar"><label>${label}</label><div class="track"><div class="fill" style="width:${w}%;background:${barColor(w)}"></div></div></div>`;
+    };
     statusPanel.innerHTML =
       `<b>${settings.petName} Lv.${s.level}</b>` +
       bar("心情", s.mood) + bar("饱食", s.satiety) + bar("清洁", s.cleanliness) + bar("精力", s.energy);

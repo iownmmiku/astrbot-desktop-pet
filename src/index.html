@@ -9,15 +9,16 @@
   canvas { display: block; }
 
   #bubble {
-    position: absolute; left: 50%; top: 4px; transform: translateX(-50%);
+    position: absolute; left: 50%; top: 4px; transform: translateX(-50%) translateY(-4px);
     max-width: 260px; padding: 8px 12px; border-radius: 12px;
-    background: rgba(255,255,255,0.95); color: #333; font: 13px/1.5 "Microsoft YaHei", sans-serif;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.25); display: none; white-space: pre-wrap; word-break: break-all;
-    z-index: 10;
+    background: rgba(255,255,255,0.96); color: #333; font: 13px/1.5 "Microsoft YaHei", sans-serif;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.28); white-space: pre-wrap; word-break: break-all;
+    z-index: 10; opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease;
   }
+  #bubble.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
   #bubble::after {
     content: ""; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
-    border: 4px solid transparent; border-top: 8px solid rgba(255,255,255,0.95);
+    border: 4px solid transparent; border-top: 8px solid rgba(255,255,255,0.96);
   }
 
   #chat-panel {
@@ -35,13 +36,15 @@
 
   #status-panel {
     position: absolute; left: 6px; top: 6px; z-index: 10;
-    background: rgba(0,0,0,0.55); color: #fff; border-radius: 8px; padding: 8px 10px;
-    font: 11px/1.8 "Microsoft YaHei", sans-serif; display: none; min-width: 130px;
+    background: rgba(20,21,26,0.82); color: #fff; border-radius: 10px; padding: 10px 12px;
+    font: 11px/1.9 "Microsoft YaHei", sans-serif; display: none; min-width: 150px;
+    backdrop-filter: blur(4px); box-shadow: 0 3px 12px rgba(0,0,0,0.35);
   }
+  #status-panel b { font-size: 12px; }
   .bar { display: flex; align-items: center; gap: 6px; }
   .bar label { width: 30px; }
-  .bar .track { flex: 1; height: 6px; background: rgba(255,255,255,0.25); border-radius: 3px; overflow: hidden; }
-  .bar .fill { height: 100%; background: #6fcf6f; border-radius: 3px; transition: width .3s; }
+  .bar .track { flex: 1; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
+  .bar .fill { height: 100%; border-radius: 4px; transition: width .4s ease, background .4s; }
 
   #conn-dot {
     position: absolute; right: 8px; top: 8px; width: 10px; height: 10px; border-radius: 50%;

@@ -5,106 +5,180 @@
 <title>AstrBot 桌宠 - 控制面板</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.6 "Microsoft YaHei", sans-serif; background: #1e1f24; color: #e8e8ec; }
-  header { padding: 14px 20px; background: #17181c; display: flex; align-items: center; gap: 10px; }
-  header h1 { font-size: 16px; margin: 0; flex: 1; }
-  #conn-badge { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #555; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 14px/1.6 "Microsoft YaHei", "PingFang SC", sans-serif; background: #141519; color: #e8e8ec; display: flex; overflow: hidden; }
+
+  /* ---------- 侧边栏 ---------- */
+  nav { width: 168px; background: #101116; padding: 18px 10px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+  nav .logo { font-size: 15px; font-weight: 700; padding: 4px 10px 16px; }
+  nav .logo small { display: block; font-size: 11px; color: #666; font-weight: 400; margin-top: 2px; }
+  nav button.tab {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    padding: 9px 12px; border: none; border-radius: 8px; background: transparent; color: #aab;
+    font: 13px "Microsoft YaHei", sans-serif; cursor: pointer; transition: background .15s, color .15s;
+  }
+  nav button.tab:hover { background: #1d1f27; color: #dde; }
+  nav button.tab.active { background: #2b5ea7; color: #fff; }
+  nav .spacer { flex: 1; }
+  #conn-badge { margin: 8px 6px 2px; font-size: 11px; padding: 4px 10px; border-radius: 10px; background: #3a3b42; text-align: center; transition: background .3s; }
   #conn-badge.ok { background: #2e7d32; }
   #conn-badge.bad { background: #c62828; }
-  main { padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  section { background: #26272e; border-radius: 10px; padding: 14px 16px; }
-  section h2 { font-size: 14px; margin: 0 0 10px; color: #9fc3ff; }
-  .row { margin-bottom: 10px; }
-  label { display: block; font-size: 12px; color: #999; margin-bottom: 3px; }
+
+  /* ---------- 主区域 ---------- */
+  main { flex: 1; overflow-y: auto; padding: 22px 26px; }
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+  .page { display: none; animation: fade .18s ease; }
+  .page.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .page h2 { font-size: 16px; margin: 0 0 4px; }
+  .page .sub { font-size: 12px; color: #777; margin-bottom: 18px; }
+
+  .card { background: #1d1f26; border: 1px solid #262832; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .card h3 { font-size: 13px; margin: 0 0 12px; color: #9fc3ff; }
+
+  .row { margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  label { display: block; font-size: 12px; color: #999; margin-bottom: 4px; }
   input[type=text], input[type=password], input[type=number], textarea {
-    width: 100%; padding: 6px 10px; border: 1px solid #444; border-radius: 6px;
-    background: #1a1b1f; color: #eee; font: 13px "Microsoft YaHei", sans-serif; outline: none;
+    width: 100%; padding: 8px 12px; border: 1px solid #363947; border-radius: 8px;
+    background: #14151a; color: #eee; font: 13px "Microsoft YaHei", sans-serif; outline: none;
+    transition: border-color .15s;
   }
+  input:focus, textarea:focus { border-color: #4a90d9; }
   textarea { resize: vertical; }
-  input[type=range] { width: 100%; }
-  button { padding: 6px 16px; border: none; border-radius: 6px; background: #4a90d9; color: #fff; font: 13px "Microsoft YaHei", sans-serif; cursor: pointer; }
-  button.ghost { background: #3a3b42; }
-  button:hover { filter: brightness(1.1); }
-  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-  .hint { font-size: 12px; color: #777; margin-top: 8px; }
-  .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
-  .bar label { width: 36px; margin: 0; color: #bbb; }
-  .bar .track { flex: 1; height: 8px; background: #3a3b42; border-radius: 4px; overflow: hidden; }
-  .bar .fill { height: 100%; background: #6fcf6f; border-radius: 4px; transition: width .3s; }
-  .bar .val { width: 36px; text-align: right; color: #999; }
-  .full { grid-column: 1 / -1; }
-  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 18px; border-radius: 8px; font-size: 13px; display: none; }
+  input[type=range] { width: 100%; accent-color: #4a90d9; }
+  input[type=checkbox] { accent-color: #4a90d9; }
+  code { background: #2a2c36; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  button { padding: 7px 18px; border: none; border-radius: 8px; background: #4a90d9; color: #fff; font: 13px "Microsoft YaHei", sans-serif; cursor: pointer; transition: filter .15s, transform .05s; }
+  button:hover { filter: brightness(1.15); }
+  button:active { transform: scale(.97); }
+  button.ghost { background: #2e3038; color: #ccd; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .hint { font-size: 12px; color: #777; margin-top: 10px; }
+
+  /* ---------- 状态条 ---------- */
+  .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; }
+  .bar label { width: 40px; margin: 0; color: #bbb; font-size: 13px; }
+  .bar .track { flex: 1; height: 10px; background: #2a2c36; border-radius: 5px; overflow: hidden; }
+  .bar .fill { height: 100%; border-radius: 5px; transition: width .4s ease, background .4s; }
+  .bar .val { width: 34px; text-align: right; color: #999; }
+  .lvl { display: inline-block; background: linear-gradient(135deg, #4a90d9, #7b5ea7); padding: 4px 14px; border-radius: 8px; font-weight: 700; margin-bottom: 12px; }
+  .lvl small { font-weight: 400; opacity: .8; margin-left: 8px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #2b5ea7; color: #fff; padding: 9px 22px; border-radius: 10px; font-size: 13px; display: none; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 99; }
 </style>
 </head>
 <body>
-<header>
-  <h1>🐾 AstrBot 桌宠 · 控制面板</h1>
+<nav>
+  <div class="logo">🐾 AstrBot 桌宠<small>控制面板</small></div>
+  <button class="tab active" data-page="conn">🔌 插件连接</button>
+  <button class="tab" data-page="model">🎨 形象模型</button>
+  <button class="tab" data-page="state">📊 桌宠状态</button>
+  <button class="tab" data-page="behavior">⚙️ 行为配置</button>
+  <button class="tab" data-page="about">ℹ️ 关于</button>
+  <div class="spacer"></div>
   <span id="conn-badge">未连接</span>
-</header>
+</nav>
+
 <main>
-  <section>
-    <h2>🔌 插件连接</h2>
-    <div class="row"><label>插件服务器（本地或远程，如 127.0.0.1:9898 或 wss://example.com:9898）</label>
-      <input type="text" id="server" placeholder="127.0.0.1:9898" /></div>
-    <div class="row"><label>连接令牌（插件 auth_token，未设置可留空）</label>
-      <input type="password" id="token" /></div>
-    <div class="btns">
-      <button id="save-conn">保存并连接</button>
-      <button id="test-conn" class="ghost">测试连接</button>
+  <!-- 插件连接 -->
+  <div class="page active" id="page-conn">
+    <h2>插件连接</h2>
+    <div class="sub">连接 AstrBot 桌宠插件（本地或远程服务器均可）</div>
+    <div class="card">
+      <h3>服务器</h3>
+      <div class="row"><label>插件服务器地址（如 127.0.0.1:9898 或 wss://example.com:9898）</label>
+        <input type="text" id="server" placeholder="127.0.0.1:9898" /></div>
+      <div class="row"><label>连接令牌（插件 auth_token，未设置可留空）</label>
+        <input type="password" id="token" /></div>
+      <div class="btns">
+        <button id="save-conn">保存并连接</button>
+        <button id="test-conn" class="ghost">测试连接</button>
+      </div>
+      <div class="hint">远程连接时，插件 ws_host 需设为 0.0.0.0 并放行端口，建议配置令牌。</div>
     </div>
-    <div class="hint">远程连接时，插件 ws_host 需设为 0.0.0.0 并放行端口。</div>
-  </section>
+  </div>
 
-  <section>
-    <h2>🎨 形象（Live2D）</h2>
-    <div class="row"><label>模型 .model3.json（本地路径 / file URL / http URL）</label>
-      <input type="text" id="model" /></div>
-    <div class="btns">
-      <button id="pick-model" class="ghost">📂 选择模型 / 模型包…</button>
-      <button id="save-model">应用形象</button>
+  <!-- 形象模型 -->
+  <div class="page" id="page-model">
+    <h2>形象模型</h2>
+    <div class="sub">支持任意 Live2D Cubism 3+ 模型，含 VPet 创意工坊 .wpk 模型包</div>
+    <div class="card">
+      <h3>模型</h3>
+      <div class="row"><label>模型 .model3.json（本地路径 / file URL / http URL）</label>
+        <input type="text" id="model" /></div>
+      <div class="btns">
+        <button id="pick-model" class="ghost">📂 选择模型 / 模型包…</button>
+        <button id="save-model">应用形象</button>
+      </div>
+      <div class="hint">可直接选择 <b>.wpk</b>（VPet 创意工坊模型包）或 <b>.zip</b>——自动解压到 exe 旁 <code>data/models/</code> 并定位其中的模型；模型文件全部外置，可随时手动替换。</div>
     </div>
-    <div class="hint">可直接选择 <b>.wpk</b>（VPet 创意工坊模型包）或 <b>.zip</b> 模型压缩包——会自动解压到 exe 旁 <code>data/models/</code> 并定位其中的 Live2D 模型；也可以选择已有的 .model3.json。模型文件都在程序外部的 data 目录，可随时手动替换。</div>
-    <div class="row"><label>缩放 <span id="scale-val">1.0</span>x</label>
-      <input type="range" id="scale" min="0.5" max="2" step="0.05" value="1" /></div>
-  </section>
-
-  <section>
-    <h2>📊 桌宠状态</h2>
-    <div id="state-bars"><div class="hint">连接插件后显示</div></div>
-    <div class="btns">
-      <button class="ghost act" data-a="feed">投喂 🍖</button>
-      <button class="ghost act" data-a="play">摸头 🖐</button>
-      <button class="ghost act" data-a="clean">洗澡 🛁</button>
-      <button class="ghost act" data-a="sleep">睡觉 💤</button>
-      <button class="ghost" id="refresh-state">刷新</button>
+    <div class="card">
+      <h3>显示</h3>
+      <div class="row"><label>缩放 <span id="scale-val">1.00</span>x</label>
+        <input type="range" id="scale" min="0.5" max="2" step="0.05" value="1" /></div>
     </div>
-  </section>
+  </div>
 
-  <section class="full">
-    <h2>⚙️ 行为配置（与插件自动同步，多端一致）</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-      <div class="row"><label><input type="checkbox" id="enable_roam" /> 允许自由走动</label></div>
-      <div class="row"><label><input type="checkbox" id="enable_chatter" /> 自言自语</label></div>
-      <div class="row"><label>走动速度（0.2–10）</label><input type="number" id="walk_speed" step="0.1" min="0.2" max="10" /></div>
-      <div class="row"><label>犯困阈值（0–100）</label><input type="number" id="sleepy_threshold" min="0" max="100" /></div>
+  <!-- 桌宠状态 -->
+  <div class="page" id="page-state">
+    <h2>桌宠状态</h2>
+    <div class="sub">每 10 秒自动刷新，也可以手动互动</div>
+    <div class="card">
+      <div id="state-lvl"></div>
+      <div id="state-bars"><div class="hint">连接插件后显示</div></div>
+      <div class="btns">
+        <button class="ghost act" data-a="feed">投喂 🍖</button>
+        <button class="ghost act" data-a="play">摸头 🖐</button>
+        <button class="ghost act" data-a="clean">洗澡 🛁</button>
+        <button class="ghost act" data-a="sleep">睡觉 💤</button>
+        <button class="ghost" id="refresh-state">🔄 刷新</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 行为配置 -->
+  <div class="page" id="page-behavior">
+    <h2>行为配置</h2>
+    <div class="sub">与插件自动同步，保存后广播给所有已连接的桌面端</div>
+    <div class="card">
+      <h3>开关</h3>
+      <div class="grid2">
+        <div class="row"><label><input type="checkbox" id="enable_roam" /> 允许自由走动</label></div>
+        <div class="row"><label><input type="checkbox" id="enable_chatter" /> 自言自语</label></div>
+      </div>
+      <div class="grid2">
+        <div class="row"><label>走动速度（0.2–10）</label><input type="number" id="walk_speed" step="0.1" min="0.2" max="10" /></div>
+        <div class="row"><label>犯困阈值（0–100）</label><input type="number" id="sleepy_threshold" min="0" max="100" /></div>
+      </div>
       <div class="row"><label>自言自语最小间隔（秒）</label><input type="number" id="chatter_interval_sec" min="5" /></div>
     </div>
-    <div class="row"><label>自言自语台词池（每行一句）</label><textarea id="chatter_lines" rows="4"></textarea></div>
-    <div class="row"><label>犯困台词池（每行一句）</label><textarea id="sleepy_lines" rows="3"></textarea></div>
-    <div class="btns">
-      <button id="load-behavior" class="ghost">从插件读取</button>
-      <button id="save-behavior">保存到插件</button>
+    <div class="card">
+      <h3>台词池</h3>
+      <div class="row"><label>自言自语台词（每行一句）</label><textarea id="chatter_lines" rows="5"></textarea></div>
+      <div class="row"><label>犯困台词（每行一句）</label><textarea id="sleepy_lines" rows="3"></textarea></div>
+      <div class="btns">
+        <button id="load-behavior" class="ghost">从插件读取</button>
+        <button id="save-behavior">保存到插件</button>
+      </div>
     </div>
-    <div class="hint">保存后插件会广播给所有已连接的桌面端，实时生效。</div>
-  </section>
+  </div>
 
-  <section class="full">
-    <h2>ℹ️ 关于</h2>
-    <div class="hint">
-      关闭本窗口时可选择「最小化到托盘」或「退出程序」——只要程序没有彻底退出，桌宠就会一直待在桌面上。<br/>
-      插件仓库：github.com/iownmmiku/astrbot_plugin_desktop_pet ｜ 桌面端仓库：github.com/iownmmiku/astrbot-desktop-pet
+  <!-- 关于 -->
+  <div class="page" id="page-about">
+    <h2>关于</h2>
+    <div class="sub">AstrBot 桌宠桌面端 v0.4.0</div>
+    <div class="card">
+      <div class="hint" style="margin-top:0">
+        关闭本窗口时可选择「最小化到托盘」或「退出程序」——只要程序没有彻底退出，桌宠就会一直待在桌面上。<br/><br/>
+        插件仓库：github.com/iownmmiku/astrbot_plugin_desktop_pet<br/>
+        桌面端仓库：github.com/iownmmiku/astrbot-desktop-pet
+      </div>
     </div>
-  </section>
+  </div>
 </main>
 <div id="toast"></div>
 <script src="panel.js"></script>

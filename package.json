@@ -1,7 +1,7 @@
 {
   "name": "astrbot-desktop-pet",
   "productName": "AstrBot 桌宠",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "AstrBot 桌宠桌面端：Live2D 桌宠 + 与 AstrBot 桌宠插件联动（虚拟桌宠模拟器风格）",
   "private": true,
   "main": "src/main.js",
