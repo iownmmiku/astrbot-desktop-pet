@@ -31,11 +31,25 @@
 
 ## 运行
 
+### 方式一：直接下载 exe（推荐）
+
+到 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载
+`AstrBotDesktopPet-x.y.z-portable.exe`，**双击即用，无需安装 Node.js**（便携版，约 74MB）。
+
+### 方式二：源码运行
+
 ```bash
 git clone https://github.com/iownmmiku/astrbot-desktop-pet.git
 cd astrbot-desktop-pet
 npm install
 npm start
+```
+
+### 自己构建 exe
+
+```bash
+npm install
+npm run build:win   # 输出到 dist/AstrBotDesktopPet-x.y.z-portable.exe
 ```
 
 > 仓库已附带 Cubism 官方示例模型 Haru（`models/Haru`）与 Cubism Core 运行时（`vendor/`），

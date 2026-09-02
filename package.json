@@ -8,13 +8,37 @@
   "scripts": {
     "start": "electron .",
     "smoke": "electron . --smoke",
-    "install:electron": "electron --version"
+    "install:electron": "electron --version",
+    "build:win": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.iownmmiku.astrbotdesktoppet",
+    "productName": "AstrBot桌宠",
+    "asar": true,
+    "compression": "maximum",
+    "files": [
+      "src/**/*",
+      "models/**/*",
+      "vendor/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": ["portable"],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "AstrBotDesktopPet-${version}-portable.exe"
+    },
+    "directories": {
+      "output": "dist"
+    }
   },
   "dependencies": {
-    "pixi.js": "^7.3.3",
-    "pixi-live2d-display": "^0.4.0"
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^7.3.3"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
   }
 }
