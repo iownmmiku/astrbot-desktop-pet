@@ -316,6 +316,17 @@
     // 菜单关闭后恢复透明区域穿透；鼠标移回模型时会再次开启模型交互。
     window.petAPI.setMousePassthrough(true);
   }
+  function showCtxMenu(x, y) {
+    menuOpen = true;
+    window.petAPI.setMousePassthrough(false);
+    ctxMenu.style.visibility = "hidden";
+    ctxMenu.style.display = "block";
+    // 使用菜单真实尺寸定位，避免固定高度导致顶部项目落在窗口外或点击区域错位。
+    const rect = ctxMenu.getBoundingClientRect();
+    ctxMenu.style.left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)) + "px";
+    ctxMenu.style.top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4)) + "px";
+    ctxMenu.style.visibility = "visible";
+  }
   function toggleSay(open) {
     sayPanel.style.display = open ? "flex" : "none";
     if (open) sayInput.focus();
@@ -338,14 +349,7 @@
     e.preventDefault();
     if (e.target.closest("#chat-panel,#status-panel,#conn-dot,#say-panel")) return;
     // 右键菜单打开后必须暂时关闭穿透，否则菜单按钮会被传给后面的窗口。
-    window.petAPI.setMousePassthrough(false);
-    // 菜单显示在点击处，超出窗口边缘时向内收
-    const mw = 150, mh = 300;
-    const x = Math.min(e.clientX, window.innerWidth - mw - 6);
-    const y = Math.min(e.clientY, window.innerHeight - mh - 6);
-    ctxMenu.style.left = Math.max(4, x) + "px";
-    ctxMenu.style.top = Math.max(4, y) + "px";
-    ctxMenu.style.display = "block";
+    showCtxMenu(e.clientX, e.clientY);
   });
   window.addEventListener("pointerdown", (e) => {
     if (!e.target.closest("#ctx-menu")) hideCtxMenu();

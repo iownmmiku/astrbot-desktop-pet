@@ -5,9 +5,8 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, dialog } =
 const path = require("path");
 const fs = require("fs");
 
-// 锁定 Chromium CSS 像素比例，避免透明窗口拖动/跨 DPI 显示器时整体缩放。
-app.commandLine.appendSwitch("force-device-scale-factor", "1");
-
+// 不设置全局 Chromium 缩放：控制面板必须保持系统原生 UI 大小。
+// 桌宠窗口的 Canvas 尺寸由渲染层显式管理，避免使用全局 DPI 强制开关。
 const SMOKE = process.argv.includes("--smoke");
 let petWin = null;    // 桌宠窗口
 let panelWin = null;  // 控制面板窗口
@@ -100,7 +99,7 @@ function createPetWindow() {
   });
   // 透明区域默认不拦截鼠标；渲染层检测到模型区域后会临时恢复交互。
   petWin.setIgnoreMouseEvents(true, { forward: true });
-  // 禁止页面级缩放；桌宠大小只由 settings.scale 控制。
+  // 仅桌宠窗口禁止页面级缩放；控制面板不受影响。
   petWin.webContents.setZoomFactor(1);
   petWin.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
   petWin.loadFile(path.join(__dirname, "index.html"));
