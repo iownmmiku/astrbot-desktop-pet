@@ -96,8 +96,21 @@
   }
 
   // ---------- PIXI / Live2D ----------
-  const app = new PIXI.Application({ backgroundAlpha: 0, autoStart: true, resizeTo: window });
-  document.getElementById("canvas-wrap").appendChild(app.view);
+  const canvasWrap = document.getElementById("canvas-wrap");
+  // 禁用 Pixi resizeTo: window，改为显式 resize，避免透明窗口移动时
+  // Canvas backing size、CSS 尺寸和 HTML 覆盖层在不同帧不同步。
+  const app = new PIXI.Application({ backgroundAlpha: 0, autoStart: true });
+  app.view.style.display = "block";
+  app.view.style.width = "100%";
+  app.view.style.height = "100%";
+  canvasWrap.appendChild(app.view);
+
+  function resizeRenderer() {
+    const width = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+    const height = Math.max(1, document.documentElement.clientHeight || window.innerHeight);
+    app.renderer.resize(width, height);
+  }
+  resizeRenderer();
 
   let model = null;
   let baseScaleX = 1;
@@ -121,13 +134,34 @@
   let fitScale = 1; // 窗口适配缩放（不含用户缩放倍率）
   let modelLoadSerial = 0;
 
+  /** 统一布局模型：模型和 HTML 气泡/菜单都以当前窗口内容区为坐标系。 */
+  function layoutModel() {
+    if (!model) return;
+    const w = app.renderer.width;
+    const h = app.renderer.height;
+    model.anchor.set(0.5, 1);
+    model.position.set(Math.round(w / 2), Math.round(h - 6));
+  }
+
   /** 按 settings.scale 应用缩放（无需重载模型，可实时调整大小） */
   function applyScale() {
     if (!model) return;
     const s = fitScale * (parseFloat(settings.scale) || 1);
     baseScaleX = s;
-    model.scale.set(s * (ai.dir < 0 ? -1 : 1), s);
+    model.scale.set(s * (typeof ai !== "undefined" && ai.dir < 0 ? -1 : 1), s);
+    layoutModel();
   }
+
+  function syncCanvasLayout() {
+    try {
+      resizeRenderer();
+      if (model) {
+        fitScale = Math.min((app.renderer.width * 0.9) / model.width, (app.renderer.height * 0.75) / model.height);
+        applyScale();
+      }
+    } catch (_) {}
+  }
+  window.addEventListener("resize", syncCanvasLayout);
 
   async function loadModel() {
     const serial = ++modelLoadSerial;
@@ -156,11 +190,9 @@
         return;
       }
     }
-    fitScale = Math.min((window.innerWidth * 0.9) / model.width, (window.innerHeight * 0.75) / model.height);
+    fitScale = Math.min((app.renderer.width * 0.9) / model.width, (app.renderer.height * 0.75) / model.height);
     applyScale();
-    model.anchor.set(0.5, 1);
-    model.x = window.innerWidth / 2;
-    model.y = window.innerHeight - 6;
+    layoutModel();
     model.eventMode = "static";
     app.stage.addChild(model);
 
