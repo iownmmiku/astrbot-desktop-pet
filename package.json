@@ -1,7 +1,7 @@
 {
   "name": "astrbot-desktop-pet",
   "productName": "AstrBot 桌宠",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "AstrBot 桌宠桌面端：Live2D 桌宠 + 与 AstrBot 桌宠插件联动（虚拟桌宠模拟器风格）",
   "private": true,
   "main": "src/main.js",
@@ -18,12 +18,13 @@
     "compression": "maximum",
     "files": [
       "src/**/*",
-      "models/**/*",
       "vendor/**/*",
       "package.json"
     ],
     "win": {
-      "target": ["portable"],
+      "target": [
+        "portable"
+      ],
       "signAndEditExecutable": false
     },
     "portable": {
@@ -34,6 +35,7 @@
     }
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^7.3.3"
   },

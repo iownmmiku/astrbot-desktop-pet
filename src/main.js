@@ -13,10 +13,22 @@ let clickThrough = false;
 let isQuitting = false;
 let closeAction = null; // 记住的关闭动作: "minimize" | "quit" | null(每次询问)
 
-// ---------------- 设置持久化（userData/settings.json） ----------------
+// ---------------- 数据目录（分体结构：exe 只做启动器，数据全部外置） ----------------
+// 打包后：<exe 所在目录>/data/；开发时：项目根目录（desktop/）
+const DATA_DIR = app.isPackaged
+  ? path.join(path.dirname(app.getPath("exe")), "data")
+  : path.join(__dirname, "..");
+
+function dataDir() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  return DATA_DIR;
+}
+ipcMain.handle("app:data-dir", () => dataDir());
+
+// ---------------- 设置持久化（data/settings.json） ----------------
 
 function settingsPath() {
-  return path.join(app.getPath("userData"), "settings.json");
+  return path.join(dataDir(), "settings.json");
 }
 function loadSettings() {
   try {
@@ -181,6 +193,56 @@ ipcMain.handle("screen:work-area", () => screen.getPrimaryDisplay().workAreaSize
 ipcMain.on("win:toggle-click-through", () => toggleClickThrough());
 ipcMain.on("app:quit", () => quitApp());
 ipcMain.on("panel:open", () => createPanelWindow());
+
+// 模型文件选择：支持 .model3.json 直接选用，或 .wpk/.zip 解压后自动定位模型
+ipcMain.handle("dialog:pick-model", async () => {
+  const win = panelWin || petWin;
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: "选择 Live2D 模型或模型包",
+    filters: [
+      { name: "Live2D 模型 / 模型包", extensions: ["model3.json", "wpk", "zip"] },
+      { name: "所有文件", extensions: ["*"] },
+    ],
+    properties: ["openFile"],
+  });
+  if (canceled || !filePaths.length) return { canceled: true };
+  let picked = filePaths[0];
+
+  // wpk（VPet 创意工坊模型包）与 zip 都是压缩包：解压到 userData/models/<名称>/
+  if (/\.(wpk|zip)$/i.test(picked)) {
+    try {
+      const AdmZip = require("adm-zip");
+      const name = path.basename(picked).replace(/\.(wpk|zip)$/i, "");
+      const dest = path.join(dataDir(), "models", name);
+      fs.mkdirSync(dest, { recursive: true });
+      new AdmZip(picked).extractAllTo(dest, true);
+      const found = findModel3(dest);
+      if (!found) return { error: "压缩包里没有找到 .model3.json 模型文件" };
+      picked = found;
+    } catch (e) {
+      return { error: "模型包解压失败：" + e.message };
+    }
+  }
+  return { modelPath: toFileUrl(picked) };
+});
+
+function findModel3(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      const r = findModel3(p);
+      if (r) return r;
+    } else if (/\.model3\.json$/i.test(e.name)) {
+      return p;
+    }
+  }
+  return null;
+}
+
+function toFileUrl(p) {
+  return "file:///" + p.replace(/\\/g, "/");
+}
 
 // 设置读写：主进程统一持久化，变更后推给桌宠窗口
 ipcMain.handle("settings:get", () => loadSettings());

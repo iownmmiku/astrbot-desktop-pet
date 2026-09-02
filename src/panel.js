@@ -15,9 +15,13 @@
 
   // ---------- 设置读写 ----------
   let settings = Object.assign(
-    { server: "127.0.0.1:9898", token: "", modelPath: "../models/Haru/Haru.model3.json", scale: 1.0 },
+    { server: "127.0.0.1:9898", token: "", modelPath: "", scale: 1.0 },
     await window.petAPI.getSettings()
   );
+  if (!settings.modelPath) {
+    const dataDir = (await window.petAPI.getDataDir()).replace(/\\/g, "/");
+    settings.modelPath = "file:///" + dataDir + "/models/Haru/Haru.model3.json";
+  }
 
   function fillForm() {
     $("server").value = settings.server;
@@ -41,6 +45,13 @@
   });
   $("save-model").addEventListener("click", async () => {
     await saveSettings({ modelPath: $("model").value.trim() || settings.modelPath, scale: parseFloat($("scale").value) || 1 });
+  });
+  $("pick-model").addEventListener("click", async () => {
+    const r = await window.petAPI.pickModel();
+    if (r.canceled) return;
+    if (r.error) { toast(r.error); return; }
+    $("model").value = r.modelPath;
+    await saveSettings({ modelPath: r.modelPath, scale: parseFloat($("scale").value) || 1 });
   });
 
   // ---------- 插件 API ----------

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("petAPI", {
   toggleClickThrough: () => ipcRenderer.send("win:toggle-click-through"),
   quit: () => ipcRenderer.send("app:quit"),
   openPanel: () => ipcRenderer.send("panel:open"),
+  pickModel: () => ipcRenderer.invoke("dialog:pick-model"),
+  getDataDir: () => ipcRenderer.invoke("app:data-dir"),
   // 设置（主进程持久化）
   getSettings: () => ipcRenderer.invoke("settings:get"),
   setSettings: (s) => ipcRenderer.invoke("settings:set", s),

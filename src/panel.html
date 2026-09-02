@@ -57,12 +57,15 @@
 
   <section>
     <h2>🎨 形象（Live2D）</h2>
-    <div class="row"><label>模型 .model3.json（本地路径或 URL）</label>
+    <div class="row"><label>模型 .model3.json（本地路径 / file URL / http URL）</label>
       <input type="text" id="model" /></div>
+    <div class="btns">
+      <button id="pick-model" class="ghost">📂 选择模型 / 模型包…</button>
+      <button id="save-model">应用形象</button>
+    </div>
+    <div class="hint">可直接选择 <b>.wpk</b>（VPet 创意工坊模型包）或 <b>.zip</b> 模型压缩包——会自动解压到 exe 旁 <code>data/models/</code> 并定位其中的 Live2D 模型；也可以选择已有的 .model3.json。模型文件都在程序外部的 data 目录，可随时手动替换。</div>
     <div class="row"><label>缩放 <span id="scale-val">1.0</span>x</label>
       <input type="range" id="scale" min="0.5" max="2" step="0.05" value="1" /></div>
-    <div class="btns"><button id="save-model">应用形象</button></div>
-    <div class="hint">支持任意 Live2D Cubism 3+ 模型；相对路径以应用内 src/ 为基准。</div>
   </section>
 
   <section>

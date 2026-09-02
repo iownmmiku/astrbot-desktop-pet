@@ -6,11 +6,15 @@
   const DEFAULTS = {
     server: "127.0.0.1:9898", // host:port 或完整 URL（http(s):// / ws(s)://），可填远程服务器
     token: "",
-    modelPath: "../models/Haru/Haru.model3.json", // 任意 .model3.json（本地路径或 http URL）
+    modelPath: "", // 留空则使用 data/models/Haru 默认模型
     scale: 1.0,
     petName: "桌宠",
   };
   const settings = Object.assign({}, DEFAULTS, await window.petAPI.getSettings());
+  if (!settings.modelPath) {
+    const dataDir = (await window.petAPI.getDataDir()).replace(/\\/g, "/");
+    settings.modelPath = "file:///" + dataDir + "/models/Haru/Haru.model3.json";
+  }
 
   // ---------- 行为配置（插件自动同步；本地缓存作离线回退） ----------
   const BEHAVIOR_DEFAULTS = {

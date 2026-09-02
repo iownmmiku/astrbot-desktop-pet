@@ -31,10 +31,23 @@
 
 ## 运行
 
-### 方式一：直接下载 exe（推荐）
+### 方式一：下载分体压缩包（推荐）
 
 到 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载
-`AstrBotDesktopPet-x.y.z-portable.exe`，**双击即用，无需安装 Node.js**（便携版，约 74MB）。
+`AstrBotDesktopPet-x.y.z-win-x64.zip`，解压后运行其中的 exe 即可（无需安装 Node.js）。
+
+**分体结构**：exe 只是启动器，所有数据都在 exe 旁的 `data/` 目录里——
+
+```
+AstrBotDesktopPet-x.y.z-portable.exe   ← 启动器
+data/
+├── settings.json      ← 全部设置（首次保存时生成）
+└── models/
+    ├── Haru/          ← 默认 Live2D 模型
+    └── <你解压的模型包>/ ← 通过控制面板选择 .wpk/.zip 后自动解压到这里
+```
+
+模型可以随意手动增删替换，设置跟着文件夹走，整个目录拷到别的电脑也能直接用。
 
 ### 方式二：源码运行
 
@@ -83,7 +96,9 @@ npm run build:win   # 输出到 dist/AstrBotDesktopPet-x.y.z-portable.exe
 ## 控制面板配置项
 
 - **插件连接**：服务器地址（`127.0.0.1:9898` 或任意远程地址，含 `wss://` 加密）、连接令牌、测试连接
-- **形象**：任意 `.model3.json` 的本地路径或 URL（相对路径以应用内 `src/` 为基准），缩放 0.5–2x
+- **形象**：任意 `.model3.json` 的本地路径或 URL（相对路径以应用内 `src/` 为基准），缩放 0.5–2x；
+  「选择模型 / 模型包」按钮可直接选用 `.model3.json`，或选择 **.wpk**（VPet《虚拟桌宠模拟器》创意工坊模型包）/ `.zip`
+  ——会自动解压到应用数据目录并定位其中的 Live2D 模型，一键换装
 - **桌宠状态**：状态条实时查看，一键投喂/摸头/洗澡/睡觉
 - **行为配置**：自由走动 / 走速 / 犯困阈值 / 自言自语开关·间隔·台词池 / 犯困台词池
   （保存时回写插件并广播给所有客户端）
