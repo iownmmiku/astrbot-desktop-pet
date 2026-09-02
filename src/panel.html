@@ -214,8 +214,10 @@
     </div>
     <div class="card">
       <h3>台词池</h3>
-      <div class="row"><label>自言自语台词（每行一句）</label><textarea id="chatter_lines" rows="5"></textarea></div>
-      <div class="row"><label>犯困台词（每行一句）</label><textarea id="sleepy_lines" rows="3"></textarea></div>
+      <div class="row"><label>自言自语台词（每行一句）</label><textarea id="chatter_lines" rows="5"></textarea>
+        <div class="btns"><button id="generate-chatter" class="ghost" type="button">✨ 按当前人格生成自言自语</button></div></div>
+      <div class="row"><label>犯困台词（每行一句）</label><textarea id="sleepy_lines" rows="3"></textarea>
+        <div class="btns"><button id="generate-sleepy" class="ghost" type="button">✨ 按当前人格生成犯困台词</button></div></div>
       <div class="btns">
         <button id="load-behavior" class="ghost">从插件读取</button>
         <button id="save-behavior">保存到插件</button>

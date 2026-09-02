@@ -291,8 +291,33 @@
     }
   }
 
+  async function generateLines(kind, targetId, buttonId) {
+    const button = $(buttonId);
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "生成中…";
+    try {
+      const resp = await fetch(httpBase() + "/api/generate-lines", {
+        method: "POST", headers: headers(), body: JSON.stringify({ kind, count: kind === "chatter" ? 8 : 5 }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+      const lines = (data.lines || []).filter(Boolean);
+      if (!lines.length) throw new Error("模型没有返回有效台词");
+      $(targetId).value = lines.join("\n");
+      toast(`已按当前人格生成 ${lines.length} 条台词，请确认后点击“保存到插件”`);
+    } catch (e) {
+      toast("生成失败：" + e.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+
   $("load-behavior").addEventListener("click", loadBehavior);
   $("save-behavior").addEventListener("click", saveBehavior);
+  $("generate-chatter").addEventListener("click", () => generateLines("chatter", "chatter_lines", "generate-chatter"));
+  $("generate-sleepy").addEventListener("click", () => generateLines("sleepy", "sleepy_lines", "generate-sleepy"));
 
   // ---------- 启动 ----------
   setBadge(null, "连接中…");

@@ -169,7 +169,10 @@ function createPanelWindow() {
 // ---------------- 托盘 ----------------
 
 function createTray() {
-  tray = new Tray(nativeImage.createEmpty());
+  // 使用内置 SVG 生成托盘小图标，避免最小化到托盘后出现空白图标。
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="9" fill="#4a90d9"/><circle cx="10" cy="13" r="2.5" fill="white"/><circle cx="22" cy="13" r="2.5" fill="white"/><path d="M8 20c2.5 4 13.5 4 16 0" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>`;
+  const icon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
   tray.setToolTip("AstrBot 桌宠");
   tray.on("double-click", () => createPanelWindow());
   rebuildTrayMenu();
