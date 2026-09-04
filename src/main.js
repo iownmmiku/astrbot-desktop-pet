@@ -255,13 +255,17 @@ function quitApp() {
 
 /** 把目标位置钳制在所在显示器工作区内，防止桌宠被移出屏幕 */
 function clampToWorkArea(x, y) {
-  const area = screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) }).workArea;
+  // 使用目标位置所在的显示器，而非当前窗口所在显示器，支持跨显示器拖动
+  const targetX = Math.round(x);
+  const targetY = Math.round(y);
+  const display = screen.getDisplayNearestPoint({ x: targetX, y: targetY });
+  const area = display.workArea;
   const w = petWin ? petWin.getBounds().width : 320;
   const h = petWin ? petWin.getBounds().height : 360;
-  return [
-    Math.min(Math.max(Math.round(x), area.x), area.x + area.width - w),
-    Math.min(Math.max(Math.round(y), area.y), area.y + area.height - h),
-  ];
+  // 确保窗口完全在显示器工作区内，支持负坐标（多显示器左侧/上方布局）
+  const clampedX = Math.min(Math.max(targetX, area.x), area.x + area.width - w);
+  const clampedY = Math.min(Math.max(targetY, area.y), area.y + area.height - h);
+  return [clampedX, clampedY];
 }
 
 ipcMain.on("win:move-by", (_e, dx, dy) => {

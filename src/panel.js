@@ -203,9 +203,24 @@
     badge.textContent = text;
   }
 
+  /** 带超时的 fetch 封装，避免网络挂起导致 UI 冻结 */
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return resp;
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === "AbortError") throw new Error("请求超时");
+      throw e;
+    }
+  }
+
   async function refreshState() {
     try {
-      const resp = await fetch(httpBase() + "/api/state", { headers: headers() });
+      const resp = await fetchWithTimeout(httpBase() + "/api/state", { headers: headers() });
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const data = await resp.json();
       setBadge(true, `已连接 · ${data.pet_name}`);
@@ -236,7 +251,7 @@
   document.querySelectorAll(".act").forEach((b) =>
     b.addEventListener("click", async () => {
       try {
-        const resp = await fetch(httpBase() + "/api/action", {
+        const resp = await fetchWithTimeout(httpBase() + "/api/action", {
           method: "POST", headers: headers(), body: JSON.stringify({ action: b.dataset.a }),
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
@@ -254,7 +269,7 @@
 
   async function loadBehavior() {
     try {
-      const resp = await fetch(httpBase() + "/api/config", { headers: headers() });
+      const resp = await fetchWithTimeout(httpBase() + "/api/config", { headers: headers() });
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const cfg = await resp.json();
       $("enable_roam").checked = !!cfg.enable_roam;
@@ -281,11 +296,11 @@
       sleepy_lines: splitLines($("sleepy_lines").value),
     };
     try {
-      const resp = await fetch(httpBase() + "/api/config", {
+      const resp = await fetchWithTimeout(httpBase() + "/api/config", {
         method: "POST", headers: headers(), body: JSON.stringify(cfg),
       });
       if (!resp.ok) throw new Error("HTTP " + resp.status);
-      toast("已保存到插件并广播给所有客户端");
+      toast("✅ 行为配置已保存");
     } catch (e) {
       toast("保存失败：" + e.message);
     }
@@ -325,5 +340,15 @@
   loadBehavior();
   loadPersona();
   togglePersonaRows();
-  setInterval(refreshState, 10000); // 状态每 10 秒自动刷新
+  
+  // 状态每 10 秒自动刷新，但面板隐藏时暂停以节省资源
+  let refreshTimer = setInterval(refreshState, 10000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    } else {
+      if (!refreshTimer) refreshTimer = setInterval(refreshState, 10000);
+      refreshState(); // 可见时立即刷新一次
+    }
+  });
 })();

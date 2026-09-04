@@ -2,6 +2,21 @@
 (async () => {
   "use strict";
 
+  // ---------- 配置常量（可调整性能参数） ----------
+  const CONFIG = {
+    POSITION_SYNC_INTERVAL_MS: 500,        // 位置同步频率（毫秒）
+    MIN_MOTION_INTERVAL_SEC: 3,            // 最小随机动作间隔（秒）
+    DEFAULT_MOTION_INTERVAL_SEC: 8,        // 默认随机动作间隔（秒）
+    FETCH_TIMEOUT_MS: 10000,               // HTTP 请求超时（毫秒）
+    WS_RECONNECT_MAX_RETRY: 6,             // WebSocket 最大重连退避次数
+    BUBBLE_DEFAULT_DURATION_MS: 6000,      // 气泡默认显示时长（毫秒）
+    TTS_MAX_LENGTH: 200,                   // TTS 最大字符数
+    CANVAS_RESOLUTION: 1,                  // Canvas 渲染分辨率（1 = CSS 像素）
+    MODEL_FIT_WIDTH_RATIO: 0.9,            // 模型适配窗口宽度比例
+    MODEL_FIT_HEIGHT_RATIO: 0.75,          // 模型适配窗口高度比例
+    MODEL_BOTTOM_OFFSET: 6,                // 模型底部偏移（像素）
+  };
+
   // ---------- 设置（主进程 userData/settings.json 统一持久化） ----------
   const DEFAULTS = {
     server: "127.0.0.1:9898", // host:port 或完整 URL（http(s):// / ws(s)://），可填远程服务器
@@ -70,7 +85,7 @@
   const connDot = document.getElementById("conn-dot");
 
   let bubbleTimer = null;
-  function speak(text, ms = 6000, noTts = false) {
+  function speak(text, ms = CONFIG.BUBBLE_DEFAULT_DURATION_MS, noTts = false) {
     bubble.textContent = text;
     bubble.classList.add("show");
     clearTimeout(bubbleTimer);
@@ -78,21 +93,32 @@
     if (!noTts) tts(text);
   }
 
-  // ---------- 文字转语音（Web Speech API） ----------
+  // ---------- 文字转语音（Web Speech API + 队列防抖） ----------
+  let ttsQueue = [];
+  let ttsPlaying = false;
   function tts(text) {
     try {
       if (!settings.ttsEnabled || !window.speechSynthesis || !text) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(String(text).slice(0, 200));
-      const voices = window.speechSynthesis.getVoices();
-      const v = voices.find((x) => x.name === settings.ttsVoice);
-      if (v) u.voice = v;
-      const rate = parseFloat(settings.ttsRate);
-      const vol = parseFloat(settings.ttsVolume);
-      u.rate = isNaN(rate) ? 1 : Math.max(0.5, Math.min(2, rate));
-      u.volume = isNaN(vol) ? 1 : Math.max(0, Math.min(1, vol));
-      window.speechSynthesis.speak(u);
+      ttsQueue.push(String(text).slice(0, CONFIG.TTS_MAX_LENGTH));
+      if (!ttsPlaying) playNextTTS();
     } catch (_) {}
+  }
+  function playNextTTS() {
+    if (!ttsQueue.length) { ttsPlaying = false; return; }
+    ttsPlaying = true;
+    window.speechSynthesis.cancel();
+    const text = ttsQueue.shift();
+    const u = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const v = voices.find((x) => x.name === settings.ttsVoice);
+    if (v) u.voice = v;
+    const rate = parseFloat(settings.ttsRate);
+    const vol = parseFloat(settings.ttsVolume);
+    u.rate = isNaN(rate) ? 1 : Math.max(0.5, Math.min(2, rate));
+    u.volume = isNaN(vol) ? 1 : Math.max(0, Math.min(1, vol));
+    u.onend = () => playNextTTS();
+    u.onerror = () => playNextTTS();
+    window.speechSynthesis.speak(u);
   }
 
   // ---------- PIXI / Live2D ----------
@@ -103,7 +129,7 @@
     backgroundAlpha: 0,
     autoStart: true,
     // 使用 CSS 像素而不是系统 DPI 物理像素，防止拖动窗口时整体放大。
-    resolution: 1,
+    resolution: CONFIG.CANVAS_RESOLUTION,
     autoDensity: false,
   });
   app.view.style.display = "block";
@@ -171,7 +197,7 @@
     if (!model) return 1;
     const width = modelBaseWidth || model.width;
     const height = modelBaseHeight || model.height;
-    return Math.min((app.renderer.width * 0.9) / width, (app.renderer.height * 0.75) / height);
+    return Math.min((app.renderer.width * CONFIG.MODEL_FIT_WIDTH_RATIO) / width, (app.renderer.height * CONFIG.MODEL_FIT_HEIGHT_RATIO) / height);
   }
 
   /** 统一布局模型：模型和 HTML 气泡/菜单都以当前窗口内容区为坐标系。 */
@@ -180,7 +206,7 @@
     const w = app.renderer.width;
     const h = app.renderer.height;
     model.anchor.set(0.5, 1);
-    model.position.set(Math.round(w / 2), Math.round(h - 6));
+    model.position.set(Math.round(w / 2), Math.round(h - CONFIG.MODEL_BOTTOM_OFFSET));
   }
 
   /** 按 settings.scale 应用缩放（无需重载模型，可实时调整大小） */
@@ -207,6 +233,8 @@
 
   async function loadModel() {
     const serial = ++modelLoadSerial;
+    connDot.className = "bad";
+    connDot.title = "正在加载模型…";
     speak("正在加载模型…", 10000, true);
     try {
       const nextModel = await PIXI.live2d.Live2DModel.from(settings.modelPath, { autoInteract: false });
@@ -249,6 +277,8 @@
       idleSec = 0;
     });
     speak(`${settings.petName || "桌宠"} 的形象加载好啦！`, 2500, true);
+    connDot.className = ws && ws.readyState === 1 ? "ok" : "bad";
+    connDot.title = ws && ws.readyState === 1 ? `已连接 ${settings.server}` : "模型已加载，等待插件连接";
   }
 
   /** 播放模型自带动作；没有匹配组时才回退到其它动作，不凭空制造动作 */
@@ -344,6 +374,7 @@
   const sayInput = document.getElementById("say-input");
   const saySend = document.getElementById("say-send");
 
+  let ctxMenuWidth = 0, ctxMenuHeight = 0;
   function hideCtxMenu() {
     uiState.menu = false;
     ctxMenu.style.display = "none";
@@ -353,12 +384,19 @@
   function showCtxMenu(x, y) {
     uiState.menu = true;
     updateMouseMode(); // 菜单打开期间强制保持交互
-    ctxMenu.style.visibility = "hidden";
-    ctxMenu.style.display = "block";
-    // 使用菜单真实尺寸定位，避免固定高度导致顶部项目落在窗口外或点击区域错位。
-    const rect = ctxMenu.getBoundingClientRect();
-    ctxMenu.style.left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)) + "px";
-    ctxMenu.style.top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4)) + "px";
+    // 首次打开时缓存菜单尺寸，避免每次都触发布局计算
+    if (!ctxMenuWidth || !ctxMenuHeight) {
+      ctxMenu.style.visibility = "hidden";
+      ctxMenu.style.display = "block";
+      const rect = ctxMenu.getBoundingClientRect();
+      ctxMenuWidth = rect.width;
+      ctxMenuHeight = rect.height;
+    } else {
+      ctxMenu.style.display = "block";
+    }
+    // 使用缓存尺寸定位，避免边缘闪烁
+    ctxMenu.style.left = Math.max(4, Math.min(x, window.innerWidth - ctxMenuWidth - 4)) + "px";
+    ctxMenu.style.top = Math.max(4, Math.min(y, window.innerHeight - ctxMenuHeight - 4)) + "px";
     ctxMenu.style.visibility = "visible";
   }
   function toggleSay(open) {
@@ -441,11 +479,22 @@
   }
 
   // ---------- 插件通信 ----------
-  let ws = null, wsRetry = 0;
+  let ws = null, wsRetry = 0, wsReconnectTimer = null;
   function connectWS() {
+    // 清理旧连接和定时器，避免内存泄漏
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+    if (ws) {
+      try { ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null; ws.close(); } catch (_) {}
+      ws = null;
+    }
     const url = `${wsBase()}/ws${settings.token ? "?token=" + encodeURIComponent(settings.token) : ""}`;
     try { ws = new WebSocket(url); } catch { scheduleReconnect(); return; }
-    ws.onopen = () => { wsRetry = 0; connDot.className = "ok"; connDot.title = `已连接 ${settings.server}`; };
+    ws.onopen = () => {
+      wsRetry = 0;
+      if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+      connDot.className = "ok";
+      connDot.title = `已连接 ${settings.server}`;
+    };
     ws.onclose = () => { connDot.className = "bad"; connDot.title = "连接断开，重连中…"; scheduleReconnect(); };
     ws.onerror = () => ws.close();
     ws.onmessage = (ev) => {
@@ -465,8 +514,9 @@
     };
   }
   function scheduleReconnect() {
-    wsRetry = Math.min(wsRetry + 1, 6);
-    setTimeout(connectWS, 1000 * wsRetry);
+    if (wsReconnectTimer) return; // 防止重复调度
+    wsRetry = Math.min(wsRetry + 1, CONFIG.WS_RECONNECT_MAX_RETRY);
+    wsReconnectTimer = setTimeout(connectWS, 1000 * wsRetry);
   }
 
   async function api(path, body) {
