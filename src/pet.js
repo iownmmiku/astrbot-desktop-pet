@@ -195,8 +195,16 @@
 
   function calculateFitScale() {
     if (!model) return 1;
-    const width = modelBaseWidth || model.width;
-    const height = modelBaseHeight || model.height;
+    // 必须使用原始尺寸，如果丢失则重新从当前 scale 反推（但这只是兜底）
+    let width = modelBaseWidth;
+    let height = modelBaseHeight;
+    if (!width || !height) {
+      // 兜底：从当前缩放后的尺寸反推原始尺寸（假设当前 scale 已知）
+      const currentScale = Math.abs(model.scale.x) || 1;
+      width = model.width / currentScale;
+      height = model.height / currentScale;
+      console.warn("[calculateFitScale] modelBase 丢失，从当前 scale 反推:", { width, height, currentScale });
+    }
     return Math.min((app.renderer.width * CONFIG.MODEL_FIT_WIDTH_RATIO) / width, (app.renderer.height * CONFIG.MODEL_FIT_HEIGHT_RATIO) / height);
   }
 
@@ -357,20 +365,23 @@
     if (!dragFrame) dragFrame = requestAnimationFrame(flushDrag);
   });
   function endDrag() {
+    const wasDragging = dragging;
     dragging = false;
     dragPending = null;
     if (dragFrame) cancelAnimationFrame(dragFrame);
     dragFrame = 0;
-    // 拖动结束后立即校准位置并重新验证布局，防止 DPI/显示器变化导致缩放错误
+    // 拖动结束后立即校准位置
     syncPosition();
-    // 强制重新计算一次，确保 Canvas 尺寸、模型缩放与当前窗口状态一致
-    requestAnimationFrame(() => {
-      resizeRenderer(true);
-      if (model) {
-        fitScale = calculateFitScale();
-        applyScale();
+    // 只在拖动过程中窗口尺寸确实变化时才重新布局（例如跨 DPI 显示器）
+    // 否则保持拖动前的缩放状态，避免不必要的重新计算
+    if (wasDragging) {
+      const currentW = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+      const currentH = Math.max(1, document.documentElement.clientHeight || window.innerHeight);
+      if (currentW !== canvasWidth || currentH !== canvasHeight) {
+        // 尺寸变化了，需要重新布局
+        requestAnimationFrame(() => syncCanvasLayout());
       }
-    });
+    }
   }
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
