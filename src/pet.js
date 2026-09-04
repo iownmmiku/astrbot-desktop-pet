@@ -220,10 +220,13 @@
 
   function syncCanvasLayout() {
     // 窗口拖动只是改变原生窗口位置，不允许触发模型缩放。
+    // 双重保护：检查 dragging 且检查尺寸是否真的变化
     if (dragging) return;
     try {
+      const oldW = canvasWidth, oldH = canvasHeight;
       resizeRenderer();
-      if (model) {
+      // 只有尺寸真的变化时才重新计算缩放，避免拖动时误触发
+      if (model && (canvasWidth !== oldW || canvasHeight !== oldH)) {
         fitScale = calculateFitScale();
         applyScale();
       }
@@ -358,8 +361,16 @@
     dragPending = null;
     if (dragFrame) cancelAnimationFrame(dragFrame);
     dragFrame = 0;
-    // 结束后立即以主进程真实位置校准漫游坐标。
+    // 拖动结束后立即校准位置并重新验证布局，防止 DPI/显示器变化导致缩放错误
     syncPosition();
+    // 强制重新计算一次，确保 Canvas 尺寸、模型缩放与当前窗口状态一致
+    requestAnimationFrame(() => {
+      resizeRenderer(true);
+      if (model) {
+        fitScale = calculateFitScale();
+        applyScale();
+      }
+    });
   }
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
