@@ -199,6 +199,9 @@ function rebuildTrayMenu() {
       { label: "洗澡 🛁", click: () => petWin && petWin.webContents.send("pet:action", "clean") },
       { label: "睡觉 💤", click: () => petWin && petWin.webContents.send("pet:action", "sleep") },
       { type: "separator" },
+      { label: "重新加载模型", click: () => petWin && petWin.webContents.send("model:reload") },
+      { label: "重置位置", click: () => { if (petWin) { const a = screen.getDisplayNearestPoint(petWin.getBounds()).workArea; const b = petWin.getBounds(); petWin.setPosition(Math.round(a.x + a.width / 2 - b.width / 2), Math.round(a.y + a.height - b.height)); } } },
+      { type: "separator" },
       {
         label: "置顶显示", type: "checkbox", checked: alwaysOnTop,
         click: (item) => {

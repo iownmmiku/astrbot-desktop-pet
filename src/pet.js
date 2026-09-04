@@ -127,23 +127,40 @@
 
   let model = null;
   let baseScaleX = 1;
-  let pointerInsideModel = false;
   let dragging = false;
 
-  // 透明区域穿透：只有鼠标位于 Live2D 模型实际显示矩形内才接收点击。
-  window.addEventListener("mousemove", (e) => {
-    if (!model || dragging) return;
+  // ---------- 统一交互/穿透状态机 ----------
+  // 规则：有任何 UI（右键菜单/聊天框/说话框/状态面板）打开，或鼠标位于模型区域时 → 接收鼠标；
+  // 其余情况 → 透明区域穿透到后面的窗口。所有穿透切换都经过这一个函数，避免多套条件互相打架。
+  const uiState = { menu: false, chat: false, say: false, status: false };
+  let pointerInModel = false;
+  let passthroughOn = null;
+  let lastPointerX = 0, lastPointerY = 0;
+
+  function updateMouseMode() {
+    if (dragging) return;
+    const shouldReceive = uiState.menu || uiState.chat || uiState.say || uiState.status || pointerInModel;
+    const wantPassthrough = !shouldReceive;
+    if (wantPassthrough !== passthroughOn) {
+      passthroughOn = wantPassthrough;
+      window.petAPI.setMousePassthrough(wantPassthrough);
+    }
+  }
+
+  function refreshPointerHit() {
+    if (!model) { pointerInModel = false; return; }
     try {
       const b = model.getBounds();
-      const inside = e.clientX >= b.x && e.clientX <= b.x + b.width &&
-        e.clientY >= b.y && e.clientY <= b.y + b.height;
-      const uiOpen = menuOpen || chatPanel.style.display === "flex" ||
-        sayPanel.style.display === "flex" || statusPanel.style.display === "block";
-      if (inside !== pointerInsideModel || uiOpen) {
-        pointerInsideModel = inside;
-        window.petAPI.setMousePassthrough(!(inside || uiOpen));
-      }
+      pointerInModel = lastPointerX >= b.x && lastPointerX <= b.x + b.width &&
+        lastPointerY >= b.y && lastPointerY <= b.y + b.height;
     } catch (_) {}
+  }
+
+  window.addEventListener("mousemove", (e) => {
+    lastPointerX = e.clientX; lastPointerY = e.clientY;
+    if (dragging) return;
+    refreshPointerHit();
+    updateMouseMode();
   });
   let fitScale = 1; // 窗口适配缩放（不含用户缩放倍率）
   let modelBaseWidth = 0;
@@ -190,6 +207,7 @@
 
   async function loadModel() {
     const serial = ++modelLoadSerial;
+    speak("正在加载模型…", 10000, true);
     try {
       const nextModel = await PIXI.live2d.Live2DModel.from(settings.modelPath, { autoInteract: false });
       // 如果用户在加载期间又选择了新模型，丢弃旧请求，避免旧模型覆盖新模型
@@ -230,6 +248,7 @@
       fetchAction("poke");
       idleSec = 0;
     });
+    speak(`${settings.petName || "桌宠"} 的形象加载好啦！`, 2500, true);
   }
 
   /** 播放模型自带动作；没有匹配组时才回退到其它动作，不凭空制造动作 */
@@ -325,16 +344,15 @@
   const sayInput = document.getElementById("say-input");
   const saySend = document.getElementById("say-send");
 
-  let menuOpen = false;
   function hideCtxMenu() {
-    menuOpen = false;
+    uiState.menu = false;
     ctxMenu.style.display = "none";
-    // 菜单关闭后恢复透明区域穿透；鼠标移回模型时会再次开启模型交互。
-    window.petAPI.setMousePassthrough(true);
+    refreshPointerHit();
+    updateMouseMode();
   }
   function showCtxMenu(x, y) {
-    menuOpen = true;
-    window.petAPI.setMousePassthrough(false);
+    uiState.menu = true;
+    updateMouseMode(); // 菜单打开期间强制保持交互
     ctxMenu.style.visibility = "hidden";
     ctxMenu.style.display = "block";
     // 使用菜单真实尺寸定位，避免固定高度导致顶部项目落在窗口外或点击区域错位。
@@ -345,6 +363,8 @@
   }
   function toggleSay(open) {
     sayPanel.style.display = open ? "flex" : "none";
+    uiState.say = !!open;
+    updateMouseMode();
     if (open) sayInput.focus();
   }
   function sendSay() {
@@ -370,21 +390,34 @@
   window.addEventListener("pointerdown", (e) => {
     if (!e.target.closest("#ctx-menu")) hideCtxMenu();
   }, true);
-  ctxMenu.addEventListener("click", (e) => {
+  ctxMenu.addEventListener("click", async (e) => {
     const item = e.target.closest(".item");
     if (!item) return;
     hideCtxMenu();
     const act = item.dataset.act;
     if (act === "chat") toggleChat(true);
     else if (act === "say") toggleSay(true);
-    else if (act === "status") statusPanel.style.display = statusPanel.style.display === "block" ? "none" : "block";
+    else if (act === "status") {
+      const open = statusPanel.style.display !== "block";
+      statusPanel.style.display = open ? "block" : "none";
+      uiState.status = open;
+      updateMouseMode();
+    }
     else if (act === "panel") window.petAPI.openPanel();
     else if (act === "poke") { playRandomMotion(/tap/i); fetchAction("poke"); }
+    else if (act === "motion") { playRandomMotion() || playIdleMotion(); playRandomExpression(); }
+    else if (act === "reset-pos") {
+      const [bounds, area] = await Promise.all([window.petAPI.getBounds(), window.petAPI.getWorkArea()]);
+      if (bounds && area) window.petAPI.moveTo(area.x + (area.width - bounds.width) / 2, area.y + area.height - bounds.height);
+      syncPosition();
+    }
     else fetchAction(act);
   });
 
   function toggleChat(open) {
     chatPanel.style.display = open ? "flex" : "none";
+    uiState.chat = !!open;
+    updateMouseMode();
     if (open) chatInput.focus();
   }
 
@@ -398,9 +431,13 @@
       const w = Math.max(0, Math.min(100, v));
       return `<div class="bar"><label>${label}</label><div class="track"><div class="fill" style="width:${w}%;background:${barColor(w)}"></div></div></div>`;
     };
+    const expPct = Math.max(0, Math.min(100, (s.exp / (s.level * 100)) * 100));
+    const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
     statusPanel.innerHTML =
       `<b>${settings.petName} Lv.${s.level}</b>` +
-      bar("心情", s.mood) + bar("饱食", s.satiety) + bar("清洁", s.cleanliness) + bar("精力", s.energy);
+      bar("经验", expPct) +
+      bar("心情", s.mood) + bar("饱食", s.satiety) + bar("清洁", s.cleanliness) + bar("精力", s.energy) +
+      `<div style="margin-top:6px;color:#9aa;font-size:10px">连接 ${settings.server} · 更新于 ${time}</div>`;
   }
 
   // ---------- 插件通信 ----------
@@ -460,7 +497,13 @@
   });
 
   async function fetchAction(action) {
-    try { const r = await api("/api/action", { action }); renderState(r.state); } catch (_) {}
+    try {
+      const r = await api("/api/action", { action });
+      renderState(r.state);
+      if (r.reply && (!ws || ws.readyState !== 1)) speak(r.reply); // WS 断开时直接显示回复
+    } catch (e) {
+      speak("操作失败：" + e.message, 4000, true);
+    }
   }
 
   // ---------- 设置（控制面板统一管理；变更实时应用） ----------
@@ -490,6 +533,10 @@
   window.petAPI.onOpenChat(() => toggleChat(true));
   window.petAPI.onAction((action) => fetchAction(action));
   window.petAPI.onOpenSettings(() => window.petAPI.openPanel());
+  window.petAPI.onReloadModel(() => {
+    if (model) { app.stage.removeChild(model); model.destroy(); model = null; }
+    loadModel();
+  });
   connDot.addEventListener("dblclick", () => window.petAPI.openPanel());
 
   // ---------- 随机行为 AI ----------
@@ -610,7 +657,7 @@
     } else if (Math.random() < 0.003) {
       setFacing(-ai.dir); // 随机转身
     }
-    window.petAPI.moveBy(dx, 0);
+    window.petAPI.moveTo(cachedX, lastWindowY); // 使用绝对目标位置，避免 moveBy 取整累积漂移
   });
 
   // ---------- 启动 ----------

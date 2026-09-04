@@ -22,4 +22,5 @@ contextBridge.exposeInMainWorld("petAPI", {
   onOpenSettings: (fn) => ipcRenderer.on("ui:open-settings", fn),
   onAction: (fn) => ipcRenderer.on("pet:action", (_e, action) => fn(action)),
   onSettingsChanged: (fn) => ipcRenderer.on("settings:changed", (_e, s) => fn(s)),
+  onReloadModel: (fn) => ipcRenderer.on("model:reload", () => fn()),
 });
