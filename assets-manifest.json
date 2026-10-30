@@ -1,0 +1,177 @@
+[
+  {
+    "path": "models/Haru/expressions/F05.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F05.exp3.json",
+    "sha256": "4f43af57229467492fab13a88f600b741f42887493e993b6ec9f558688d2dcea"
+  },
+  {
+    "path": "models/Haru/Haru.2048/texture_01.png",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.2048/texture_01.png",
+    "sha256": "e1e977447ee7e6e347f1b96b9103ae269e6f4e4a8cf38068d161537415cc51c8"
+  },
+  {
+    "path": "models/Haru/expressions/F03.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F03.exp3.json",
+    "sha256": "cdea71773205e6299155820c12afe20c15dcf53f0e73da7a30c364fe5d16d38c"
+  },
+  {
+    "path": "models/Haru/motions/haru_g_idle.motion3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/motions/haru_g_idle.motion3.json",
+    "sha256": "8a4fac459abf35dfb049188e4330d485a9fce54ae6111625f4ffae4d9b03abfb"
+  },
+  {
+    "path": "models/Haru/Haru.cdi3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.cdi3.json",
+    "sha256": "f0b7b68e8404fb2a327f77515388f9f2418d038e3eb98a7ecff89818c3dd4e97"
+  },
+  {
+    "path": "models/Haru/sounds/haru_Info_04.wav",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/sounds/haru_Info_04.wav",
+    "sha256": "df9bdccee25492b1787bde80877a0bbbe442c71385083ce63987ff4d7aba456d"
+  },
+  {
+    "path": "models/Haru/motions/haru_g_m15.motion3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/motions/haru_g_m15.motion3.json",
+    "sha256": "4383147bd61a7bd2d990591512bfe29eea743f93868e8679ffed16e588628088"
+  },
+  {
+    "path": "models/Haru/motions/haru_g_m26.motion3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/motions/haru_g_m26.motion3.json",
+    "sha256": "2b20fbbf31439a5792c808085ecd4c9dc5addeb6195c6d113a25e77f7acc0f4f"
+  },
+  {
+    "path": "models/Haru/Haru.2048/texture_00.png",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.2048/texture_00.png",
+    "sha256": "30fce81e6b2d69fb99e8d1b5f391a6e0240f671095e491e9bbe24ddd7c7f434d"
+  },
+  {
+    "path": "models/Haru/motions/haru_g_m09.motion3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/motions/haru_g_m09.motion3.json",
+    "sha256": "d6c8abb01dcfee8246cccbe7a437f025cb31884f8408f3207e1a6e4139888e45"
+  },
+  {
+    "path": "models/Haru/Haru.moc3",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.moc3",
+    "sha256": "aa59f7a3dc3b30b23b5f10afd9192ed755e4d01dc9a12442d99b972a418e2543"
+  },
+  {
+    "path": "models/Haru/Haru.model3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.model3.json",
+    "sha256": "5a41969802b8f9019ca731b07d918fc137e6a61eb9943bdd3f532aeaa0936f8c"
+  },
+  {
+    "path": "models/Haru/motions/haru_g_m06.motion3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/motions/haru_g_m06.motion3.json",
+    "sha256": "311c544c67282cbc40ac1e0287751b20a7f49a46f4eea989b7071efc3188053c"
+  },
+  {
+    "path": "models/Haru/Haru.pose3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.pose3.json",
+    "sha256": "cd1c1e2c0faac3bf0c42fdf1a4d5a064ebd5e1f2dc4116a9a7c723b948818ef6"
+  },
+  {
+    "path": "models/Haru/sounds/haru_Info_14.wav",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/sounds/haru_Info_14.wav",
+    "sha256": "a1723f7f6a7858882091d50b4762f063e577a671630b0d910b429c49804fa0c7"
+  },
+  {
+    "path": "models/Haru/expressions/F07.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F07.exp3.json",
+    "sha256": "77e3b941e2525aff0308ed82998e6b4356c896e97d9411c528f98fd4a753d685"
+  },
+  {
+    "path": "models/Haru/motions/haru_g_m20.motion3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/motions/haru_g_m20.motion3.json",
+    "sha256": "536e467d6533c0883b2ad6c8915bc632b4d4188fc3d3abb19cc6b4f5fd12ddb9"
+  },
+  {
+    "path": "models/Haru/Haru.physics3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/Haru.physics3.json",
+    "sha256": "b09a654759a0a0a49998a263757b10f310377adab4b8a281ae5c70902a8a7d1f"
+  },
+  {
+    "path": "models/Haru/expressions/F04.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F04.exp3.json",
+    "sha256": "354c58609b64a74daf8d7e37b4d28a365548aa5ba1bf941ec4d8db4bd3bb43bd"
+  },
+  {
+    "path": "models/Haru/expressions/F08.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F08.exp3.json",
+    "sha256": "be652831b79458fd3f9d55b28c15b0e93d551dd730c5e1053e23d238fe879a21"
+  },
+  {
+    "path": "models/Haru/sounds/haru_talk_13.wav",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/sounds/haru_talk_13.wav",
+    "sha256": "a0890e39bd46e45469e6ea3da96859957f161bbef19146591c8437ed57d0bb0f"
+  },
+  {
+    "path": "models/Haru/expressions/F01.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F01.exp3.json",
+    "sha256": "b143d37d24af8fa5d619e333e791facd87d6396ab75e09fa9051e760f8ff96e7"
+  },
+  {
+    "path": "models/Haru/expressions/F02.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F02.exp3.json",
+    "sha256": "c0bd4f923b12f40f8ad778766cf48a260054ff346156aaee062dcad788053063"
+  },
+  {
+    "path": "models/Haru/expressions/F06.exp3.json",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/expressions/F06.exp3.json",
+    "sha256": "1bf9ad6a640b8009d429d883718b2bf2d0091b380c63ca1c65326bdbc17105aa"
+  },
+  {
+    "path": "models/Haru/sounds/haru_normal_6.wav",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/Samples/Resources/Haru/sounds/haru_normal_6.wav",
+    "sha256": "7cbee57fa4a59bf5e645b19408df0a1869a4d2d7234d5bfd8e0849262dd39c6d"
+  },
+  {
+    "path": "vendor/pixi.min.js",
+    "url": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js",
+    "sha256": "403f2f2ee8145fa17f60c5c89403056efe2680e5096ec2762036486914ed19c5"
+  },
+  {
+    "path": "vendor/cubism4.min.js",
+    "url": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js",
+    "sha256": "af1267e6d52759b245766c578d905bfa025b532d5c3cc727c370957c4409e21b"
+  },
+  {
+    "path": "licenses/Live2D-Samples-LICENSE.md",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/LICENSE.md",
+    "sha256": "787a7d1454240865420b96ea9a20ab5e1a5ec3c1abced2e308288c2de8aac991"
+  },
+  {
+    "path": "licenses/Live2D-Samples-NOTICE.md",
+    "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/develop/NOTICE.md",
+    "sha256": "fa72aa00a7bf8b98a7617a9d67a3530a9fe23705808163cf54ca799398b22fbc"
+  },
+  {
+    "path": "licenses/pixi.js-LICENSE.txt",
+    "url": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/LICENSE",
+    "sha256": "536a16e090f0b6c1454a7c0b47ee8414a39a2f1724a154f10ca1edc750a2dcfd"
+  },
+  {
+    "path": "licenses/pixi-live2d-display-LICENSE.txt",
+    "url": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/LICENSE",
+    "sha256": "8ccace668a041e78ed525d091b0b5daf8b623ff447f912616de535415e4f302f"
+  },
+  {
+    "path": "licenses/Live2D-Proprietary-License.html",
+    "url": "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html",
+    "sha256": "e7b4ffc6c636de2cfdd6d2eed6a4e43fa7034e7f15a0c3a15f1603dbb3b4c2b6"
+  },
+  {
+    "path": "licenses/Live2D-Free-Material-License.html",
+    "url": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+    "sha256": "e7daa8a2a20b491fa9e530455a83faf8f4fe5876d7b85cf9d9ad1bcdddcbaf8f"
+  },
+  {
+    "path": "licenses/Live2D-Sample-Model-Terms.html",
+    "url": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+    "sha256": "fbe62bce6bcca7f2457fd3d2cc1b0a4fb635ed87090519abdc1d4895fe51dae9"
+  },
+  {
+    "path": "vendor/live2dcubismcore.min.js",
+    "url": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
+    "sha256": "25ae938cb4fe282ce189b357bcc97e603d1e1f7ec78bf04150d401c23cdc792f"
+  }
+]

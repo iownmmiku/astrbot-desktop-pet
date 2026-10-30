@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>AstrBot 桌宠 · 控制台</title>
+  <link rel="stylesheet" href="control.css">
+  <script src="control.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">✿</div><div><strong>小小陪伴</strong><span>ASTRBOT DESKTOP PET</span></div></div>
+    <div class="side-label">我们的日常</div>
+    <nav aria-label="主导航">
+      <button class="nav-item active" data-view="home"><span>⌂</span>桌宠小屋</button>
+      <button class="nav-item" data-view="chat"><span>♡</span>聊聊天</button>
+      <button class="nav-item" data-view="appearance"><span>✧</span>形象与窗口</button>
+      <button class="nav-item" data-view="behavior"><span>☷</span>性格与习惯</button>
+      <button class="nav-item" data-view="connection"><span>⇄</span>连接设置</button>
+    </nav>
+    <div class="side-bottom"><div class="connection-mini"><i id="side-dot"></i><span id="side-status">尚未连接</span></div><p>关掉控制台，陪伴还在。<br>可从系统托盘再次打开。</p><button id="quit" class="text-button">退出桌宠</button></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><span class="eyebrow">A LITTLE FRIEND, ALWAYS HERE</span><p id="today">今天，也一起好好生活。</p></div><span class="version" id="app-version">重建版</span></header>
+    <div id="notice" class="notice" role="status" hidden></div>
+
+    <section data-page="home" class="page active">
+      <div class="page-title"><div><h1>桌宠小屋<span class="tiny-flower">✳</span></h1><p>一点点照顾，一天天熟悉。</p></div><button class="button secondary" id="refresh-state">↻ 刷新状态</button></div>
+      <div class="hero">
+        <div class="hero-copy"><span class="pill">今日陪伴</span><h2>你好，我是<span id="pet-name">桌宠</span>。</h2><p id="hero-description">连接 AstrBot，让我们开始聊天吧。</p><div class="level-row"><span class="level-badge" id="level">Lv. —</span><span id="exp">等待状态同步</span></div></div>
+        <div class="hero-art" aria-hidden="true"><span class="spark spark-one">✧</span><span class="spark spark-two">✦</span><div class="cat-mini"><div class="cat-ear left"></div><div class="cat-ear right"></div><div class="cat-face"><i></i><i></i><b>ω</b></div></div><div class="art-shadow"></div><span class="art-caption">很高兴，今天也见到你。</span></div>
+      </div>
+      <div class="section-heading"><h3>现在的状态</h3><span id="state-sync">等待连接</span></div>
+      <div class="stat-grid">
+        <article class="stat-card mood"><div><span class="stat-icon">♡</span><span>心情</span><strong id="mood-value">—</strong></div><div class="track"><span id="mood-bar"></span></div><small>摸摸头，开心一点</small></article>
+        <article class="stat-card satiety"><div><span class="stat-icon">♧</span><span>饱食</span><strong id="satiety-value">—</strong></div><div class="track"><span id="satiety-bar"></span></div><small>好好吃饭，好好长大</small></article>
+        <article class="stat-card cleanliness"><div><span class="stat-icon">♢</span><span>清洁</span><strong id="cleanliness-value">—</strong></div><div class="track"><span id="cleanliness-bar"></span></div><small>洗个澡，清清爽爽</small></article>
+        <article class="stat-card energy"><div><span class="stat-icon">☾</span><span>精力</span><strong id="energy-value">—</strong></div><div class="track"><span id="energy-bar"></span></div><small>累了就歇一会儿</small></article>
+      </div>
+      <div class="section-heading"><h3>陪 TA 做点什么</h3><span>互动后自动同步</span></div>
+      <div class="actions"><button data-action="feed"><span>🍙</span>投喂</button><button data-action="play"><span>✋</span>摸摸</button><button data-action="clean"><span>🫧</span>洗澡</button><button data-action="sleep" id="sleep-action"><span>🌙</span><b>睡觉</b></button><button data-action="poke"><span>👉</span>戳一戳</button></div>
+      <div class="last-bubble"><span class="quote-mark">“</span><p id="last-speech">等你来和我说话。</p><span class="bubble-flower">✿</span></div>
+    </section>
+
+    <section data-page="chat" class="page">
+      <div class="page-title"><div><h1>聊聊天</h1><p>工作间隙，分享一个小小的念头。</p></div><button class="button secondary" id="clear-chat">清空显示</button></div>
+      <div class="chat-card"><div id="messages" class="messages" aria-live="polite"><div class="chat-empty" id="chat-empty"><span>♡</span><h3>我在认真听。</h3><p>回复由你在 AstrBot 中配置的大模型生成。</p></div></div><form id="chat-form" class="chat-form"><label class="sr-only" for="chat-input">聊天内容</label><textarea id="chat-input" rows="2" maxlength="4000" placeholder="今天有什么想分享的？ Enter 发送，Shift + Enter 换行"></textarea><button class="button primary" id="send-chat" type="submit">发送 ↗</button></form><div id="chat-status" class="form-note" role="status">聊天上下文由插件维护；关闭桌面端不会中断插件。</div><div id="chat-recovery" class="recovery-row" hidden><span id="chat-recovery-note">结果尚未确认，请先检查原请求。</span><button id="check-chat" class="button secondary" type="button">检查结果</button><button id="retry-chat" class="button secondary" type="button">重试原请求</button></div></div>
+    </section>
+
+    <section data-page="appearance" class="page">
+      <div class="page-title"><div><h1>形象与窗口</h1><p>让小伙伴以你喜欢的样子陪伴。</p></div></div>
+      <div class="settings-card"><div class="card-heading"><span class="card-icon">✧</span><div><h3>Live2D 形象</h3><p>选择完整模型目录中的 .model3.json 文件。</p></div></div><div class="model-current"><strong id="model-name">内置小猫</strong><span id="model-path">未选择外部模型</span></div><div class="row-buttons"><button id="choose-model" class="button primary">选择模型文件</button><button id="default-model" class="button secondary">恢复默认形象</button></div><p class="form-note">模型包请先解压，并保留贴图、动作和 .moc3 文件的相对位置。</p></div>
+      <form id="appearance-form" class="settings-card"><h3>桌面上的样子</h3><label class="range-row" for="scale">模型大小 <output id="scale-value">1.00×</output></label><input type="range" id="scale" min="0.5" max="2" step="0.05" value="1"><label class="switch-row"><span><strong>始终置顶</strong><small>让桌宠出现在其他普通窗口前方。</small></span><input type="checkbox" id="always-on-top" checked></label><label class="switch-row"><span><strong>鼠标穿透</strong><small>点击会落到桌宠背后的窗口，可在托盘中关闭。</small></span><input type="checkbox" id="click-through"></label><div class="row-buttons"><button class="button primary" type="submit">保存窗口设置</button><button class="button secondary" type="button" id="reset-position">把桌宠移回屏幕</button></div></form>
+      <form id="quiet-form" class="settings-card"><h3>安静陪伴</h3><label class="switch-row"><span><strong>免打扰</strong><small>暂停自言自语和平台消息推送；你主动聊天和互动仍会得到回应。</small></span><input id="quiet-mode" type="checkbox"></label><p id="quiet-until" class="form-note"></p><div class="row-buttons"><button type="submit" class="button primary">保存免打扰设置</button><button type="button" id="quiet-hour" class="button secondary">安静一小时</button><button type="button" id="quiet-resume" class="text-button">恢复提醒</button></div></form>
+      <div class="tip-card">拖动桌宠可移动位置 · 双击打开控制台 · <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>P</kbd> 随时找回控制台</div>
+    </section>
+
+    <section data-page="behavior" class="page">
+      <div class="page-title"><div><h1>性格与习惯</h1><p>由插件保存，同步到每一个已连接的桌面端。</p></div><span id="config-dirty" class="dirty-label" hidden>有未保存的修改</span></div>
+      <form id="behavior-form">
+        <div class="settings-card"><h3>认识这个小伙伴</h3><div class="form-grid"><label>桌宠名字<input id="config-pet-name" maxlength="128" placeholder="桌宠"></label><label>人格来源<select id="persona-source"><option value="custom">插件自定义人格</option><option value="persona">AstrBot 已配置人格</option><option value="default">AstrBot 默认人格</option></select></label></div><label id="custom-persona-row">自定义人格<textarea id="persona" rows="4" maxlength="20000" placeholder="描述 TA 的性格、语气与喜好…"></textarea></label><div id="selected-persona-row" hidden><label>AstrBot 人格 ID<input id="persona-id" list="persona-options" maxlength="128" placeholder="选择或输入已配置的人格 ID"><datalist id="persona-options"></datalist></label><button id="refresh-personas" class="text-button" type="button">↻ 从 AstrBot 刷新人格列表</button></div><p class="form-note" id="persona-note">选择 AstrBot 人格时，将使用原人格设定与开场对话。</p><label class="switch-row"><span><strong>互动时用大模型回复</strong><small>投喂、抚摸等互动按照当前人格说话；失败时使用预置台词。</small></span><input type="checkbox" id="llm-action-reply" checked></label></div>
+        <div class="settings-card"><h3>日常小习惯</h3><label class="switch-row"><span><strong>自由走动</strong><small>偶尔在当前屏幕的工作区里散散步。</small></span><input type="checkbox" id="enable-roam" checked></label><div class="form-grid"><label>走动速度<input id="walk-speed" type="number" min="0.2" max="10" step="0.1" value="1.5"></label><label>犯困精力阈值<input id="sleepy-threshold" type="number" min="0" max="100" step="1" value="20"></label></div><label class="switch-row"><span><strong>空闲时自言自语</strong><small>从台词池中随机选一句陪你。</small></span><input type="checkbox" id="enable-chatter" checked></label><label>自言自语间隔（秒）<input id="chatter-interval" type="number" min="5" max="86400" step="1" value="90"></label><div class="textarea-heading"><label for="chatter-lines">自言自语台词 · 每行一句</label><button class="text-button" type="button" data-generate="chatter">✧ 按人格生成</button></div><textarea id="chatter-lines" rows="5" maxlength="50099"></textarea><div class="textarea-heading"><label for="sleepy-lines">犯困台词 · 每行一句</label><button class="text-button" type="button" data-generate="sleepy">✧ 按人格生成</button></div><textarea id="sleepy-lines" rows="3" maxlength="50099"></textarea><p class="form-note">生成台词使用插件当前已保存的人格，生成后仍需点击下方按钮保存。</p></div>
+        <div class="sticky-actions"><span id="config-status">连接后可读取插件设置。</span><button type="submit" class="button primary" id="save-config">保存并同步</button></div>
+      </form>
+    </section>
+
+    <section data-page="connection" class="page">
+      <div class="page-title"><div><h1>连接设置</h1><p>桌面上的小伙伴，与 AstrBot 保持联系。</p></div></div>
+      <div class="connection-banner"><i id="connection-dot"></i><div><strong id="connection-state">尚未连接</strong><p id="connection-message">正在读取连接设置…</p></div><button id="reconnect" class="button secondary">重新连接</button></div>
+      <form id="connection-form" class="settings-card"><h3>AstrBot 插件服务</h3><label>服务器地址<input id="server" placeholder="127.0.0.1:9898" maxlength="2048" required autocomplete="off" spellcheck="false"></label><p class="form-note">支持 http://、https://、ws://、wss:// 和反向代理路径前缀。</p><label>连接令牌<input id="token" type="password" placeholder="未设置令牌" maxlength="4096" autocomplete="new-password"></label><p class="form-note" id="token-note">与 AstrBot 插件中的 auth_token 保持一致。</p><label class="check-line"><input type="checkbox" id="clear-token">清除已保存令牌</label><div class="row-buttons"><button class="button primary" type="submit">保存并连接</button><button class="button secondary" type="button" id="test-connection">测试连接</button></div><p class="form-note">测试连接使用已保存的地址与令牌。修改后请先保存。</p></form>
+      <div class="settings-card muted"><h3>连接小提示</h3><p>本机使用默认地址 <code>127.0.0.1:9898</code>。请先在 AstrBot 中启用桌宠插件。</p><p>远程连接时，插件监听地址改为 <code>0.0.0.0</code>，设置连接令牌，并通过 HTTPS 反向代理访问。</p><p>网络中断后会自动重连。聊天和互动超时后不会自动重发，避免重复操作。</p></div>
+    </section>
+  </main>
+</body>
+</html>
+
+
