@@ -1,17 +1,23 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog, protocol, safeStorage, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog, protocol, safeStorage, screen, globalShortcut, net, shell, clipboard } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { fileURLToPath, pathToFileURL } = require('node:url');
 const { DEFAULT_SETTINGS, PetConnection, normalizeSettings, atomicWriteJson, readJson } = require('./core');
 const { petLayout, clampBounds, resizeAtFeet } = require('./geometry');
+const { testConnection } = require('./diagnostics');
+const { UpdateChecker } = require('./updates');
+const { StartupController } = require('./startup');
+const { FullscreenMonitor, quickChatBounds } = require('./fullscreen');
 
 app.setName('AstrBot 桌宠');
 if (process.env.PET_DATA_DIR) app.setPath('userData', path.resolve(process.env.PET_DATA_DIR));
 protocol.registerSchemesAsPrivileged([{ scheme: 'petmodel', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 
-let control = null, pet = null, tray = null, connection = null, quitting = false;
+let control = null, pet = null, quickChat = null, tray = null, connection = null, quitting = false;
+let startupController = null, fullscreenMonitor = null, updateChecker = null, diagnosticBusy = false;
+let companionMode = { fullscreen: false };
 let settings = { ...DEFAULT_SETTINGS }, token = '', preservedEncryptedToken = '', startupNotice = '', modelRoot = null;
 let settingsPath, drag = null, positionTimer = null, roamingTimer = null, lastRoam = Date.now(), nextRoam = Date.now() + 15000, roamEnd = 0, direction = 1;
 let pendingSettingsBackup = false;
@@ -23,7 +29,7 @@ function setMotion(state) {
 }
 
 function broadcast(message) {
-  for (const win of [control, pet]) if (win && !win.isDestroyed()) win.webContents.send('pet:update', message);
+  for (const win of [control, pet, quickChat]) if (win && !win.isDestroyed()) win.webContents.send('pet:update', message);
 }
 
 function modelInfo() {
@@ -44,8 +50,19 @@ function modelInfo() {
   } catch (error) { modelRoot = null; return { url: '', name: '内置小猫', path: filename, error: `模型无法载入：${error.message}` }; }
 }
 
-function publicSettings() { return { ...settings, layout: { ...currentLayout }, tokenConfigured: Boolean(token || preservedEncryptedToken), tokenUnavailable: Boolean(preservedEncryptedToken), model: modelInfo() }; }
-function snapshot() { return { settings: publicSettings(), ...connection.snapshot(), notice: startupNotice, appVersion: app.getVersion() }; }
+function publicSettings() { return { ...settings, layout: { ...currentLayout }, tokenConfigured: Boolean(token || preservedEncryptedToken), tokenUnavailable: Boolean(preservedEncryptedToken), model: modelInfo(), startup: startupController?.status() || { supported: false, enabled: false, message: '正在读取启动设置。' }, fullscreen: { ...(fullscreenMonitor?.status() || { supported: false, active: false }), active: companionMode.fullscreen, ...(!settings.quietOnFullscreen ? { message: '自动全屏安静已关闭。' } : {}) } }; }
+function snapshot() { return { settings: publicSettings(), ...connection.snapshot(), companionMode: { ...companionMode }, notice: startupNotice, appVersion: app.getVersion() }; }
+
+function applyCompanionMode() {
+  if (quitting) return;
+  const fullscreen = Boolean(settings.quietOnFullscreen && fullscreenMonitor?.status().active);
+  connection?.setSpeechPolicy({ ...settings, fullscreenQuiet: fullscreen });
+  if (fullscreen !== companionMode.fullscreen) {
+    companionMode = { fullscreen }; stopDrag(); nextRoam = Date.now() + 15000; roamEnd = 0;
+    broadcast({ type: 'companion_mode', data: { ...companionMode } });
+    if (pet && !pet.isDestroyed()) fullscreen ? pet.hide() : pet.showInactive();
+  }
+}
 
 function store(nextSettings = settings, nextToken = token, clearUnavailableToken = false) {
   let encryptedToken = clearUnavailableToken ? '' : preservedEncryptedToken;
@@ -136,7 +153,7 @@ function createWindows() {
   const prefs = { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true };
   control = new BrowserWindow({ width: 1120, height: 820, minWidth: 860, minHeight: 650, backgroundColor: '#f7f4ee', title: 'AstrBot 桌宠 · 控制台', show: false, webPreferences: { ...prefs } });
   control.removeMenu();
-  control.once('ready-to-show', () => control.show());
+  control.once('ready-to-show', () => { if (!settings.startMinimized && !process.argv.includes('--background')) control.show(); });
   control.on('close', (event) => { if (!quitting && tray) { event.preventDefault(); control.hide(); } });
   secureWindow(control, 'control.html');
   const area = screen.getPrimaryDisplay().workArea;
@@ -144,7 +161,7 @@ function createWindows() {
   const initial = safeBounds(settings.petX ?? area.x + area.width - currentLayout.width - 30, settings.petY ?? area.y + area.height - currentLayout.height);
   pet = new BrowserWindow({ ...initial, transparent: true, frame: false, resizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, hasShadow: false, alwaysOnTop: settings.alwaysOnTop, show: false, backgroundColor: '#00000000', webPreferences: { ...prefs, backgroundThrottling: true } });
   pet.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
-  pet.once('ready-to-show', () => pet.showInactive());
+  pet.once('ready-to-show', () => { if (!companionMode.fullscreen) pet.showInactive(); });
   pet.on('close', event => { if (!quitting) event.preventDefault(); });
   pet.on('blur', () => { if (drag) stopDrag(); });
   secureWindow(pet, 'pet.html');
@@ -153,6 +170,29 @@ function createWindows() {
 function openControl() {
   if (!control || control.isDestroyed()) return;
   control.show(); control.restore(); control.focus();
+}
+
+function openQuickChat() {
+  if (!pet || pet.isDestroyed()) return false;
+  stopDrag(); roamEnd = 0; nextRoam = Date.now() + 15000;
+  const petBounds = pet.getBounds();
+  const area = screen.getDisplayNearestPoint({ x: Math.round(petBounds.x + petBounds.width / 2), y: Math.round(petBounds.y + petBounds.height / 2) }).workArea;
+  const bounds = quickChatBounds(petBounds, area);
+  const reveal = () => {
+    if (quitting || !quickChat || quickChat.isDestroyed()) return;
+    quickChat.show(); quickChat.focus(); quickChat.webContents.send('pet:update', { type: 'quickchat_opened' });
+  };
+  if (!quickChat || quickChat.isDestroyed()) {
+    quickChat = new BrowserWindow({ ...bounds, frame: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, title: 'AstrBot 桌宠 · 快聊', backgroundColor: '#f7f4ee', alwaysOnTop: settings.alwaysOnTop, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
+    quickChat.removeMenu(); quickChat.once('ready-to-show', reveal);
+    quickChat.on('close', event => { if (!quitting) { event.preventDefault(); closeQuickChat(); } });
+    secureWindow(quickChat, 'quickchat.html');
+  } else { quickChat.setBounds(bounds); if (!quickChat.webContents.isLoadingMainFrame()) reveal(); }
+  return true;
+}
+
+function closeQuickChat() {
+  quickChat?.hide(); nextRoam = Date.now() + 15000; return true;
 }
 
 function createTray() {
@@ -174,6 +214,7 @@ function createTray() {
 function updateTray() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '和桌宠聊聊天', click: openQuickChat },
     { label: '打开控制台', click: openControl },
     { label: '把桌宠移回屏幕', click: resetPosition },
     { type: 'separator' },
@@ -189,27 +230,44 @@ function resetPosition() {
   const area = screen.getPrimaryDisplay().workArea;
   setLayout(petLayout(settings.scale, area));
   pet.setBounds(safeBounds(area.x + area.width - currentLayout.width - 30, area.y + area.height - currentLayout.height));
-  pet.showInactive(); rememberPosition();
+  if (!companionMode.fullscreen) pet.showInactive(); rememberPosition();
+  if (quickChat?.isVisible()) openQuickChat();
 }
 
 function saveSettings(patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('设置格式无效。');
   const clean = {};
-  for (const key of ['server', 'scale', 'alwaysOnTop', 'clickThrough', 'quietMode', 'muteUntil']) if (key in patch) clean[key] = patch[key];
+  for (const key of ['server', 'scale', 'alwaysOnTop', 'clickThrough', 'quietMode', 'muteUntil', 'launchAtLogin', 'startMinimized', 'quietOnFullscreen']) if (key in patch) clean[key] = patch[key];
   const next = normalizeSettings(clean, settings);
-  let nextToken = token;
+  const serverChanged = next.server !== settings.server;
+  // Testing a new address never reuses the previous server's credential;
+  // saving that same draft must follow the same rule.
+  let nextToken = serverChanged ? '' : token;
   if (patch.clearToken === true) nextToken = '';
   else if (typeof patch.token === 'string' && patch.token.length) {
     if (patch.token.length > 4096) throw new Error('令牌过长。');
-    nextToken = patch.token.trim();
+    nextToken = patch.token.trim() || nextToken;
   }
-  store(next, nextToken, patch.clearToken === true);
+  const previousStartup = startupController?.status();
+  const startupChanged = 'launchAtLogin' in clean;
+  try {
+    if (startupChanged) startupController.setEnabled(next.launchAtLogin);
+    store(next, nextToken, patch.clearToken === true || serverChanged);
+  } catch (error) {
+    if (startupChanged && previousStartup?.supported) {
+      try { startupController.setEnabled(previousStartup.enabled); }
+      catch { broadcast({ type: 'notice', text: '保存未完成，系统启动项恢复失败，请检查 Windows 启动应用设置。' }); }
+    }
+    throw error;
+  }
   const reconnect = next.server !== settings.server || nextToken !== token;
   const resized = next.scale !== settings.scale;
   settings = next; token = nextToken;
-  connection.setSpeechPolicy(settings);
+  if (settings.quietOnFullscreen) fullscreenMonitor?.start(); else fullscreenMonitor?.stop();
+  applyCompanionMode();
   pet.setAlwaysOnTop(settings.alwaysOnTop);
   pet.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
+  if (quickChat && !quickChat.isDestroyed()) quickChat.setAlwaysOnTop(settings.alwaysOnTop);
   if (resized) resizePetAtFeet();
   updateTray();
   broadcast({ type: 'settings', data: publicSettings() });
@@ -218,22 +276,31 @@ function saveSettings(patch) {
 }
 
 function assertSender(event, petOnly = false) {
-  const expected = petOnly ? [pet] : [control, pet];
+  const expected = petOnly ? [pet] : [control, pet, quickChat];
   if (!expected.some(win => win && !win.isDestroyed() && win.webContents === event.sender)) throw new Error('不允许的窗口请求。');
   const url = event.senderFrame?.url;
-  if (!url || ![pathToFileURL(path.join(__dirname, 'control.html')).href, pathToFileURL(path.join(__dirname, 'pet.html')).href].includes(url)) throw new Error('不允许的页面请求。');
+  if (!url || !['control.html', 'pet.html', 'quickchat.html'].map(page => pathToFileURL(path.join(__dirname, page)).href).includes(url)) throw new Error('不允许的页面请求。');
 }
 
 function handle(name, callback, petOnly = false) {
   ipcMain.handle(`pet:${name}`, async (event, ...args) => {
     try { assertSender(event, petOnly); return { ok: true, value: await callback(...args) }; }
-    catch (error) { return { ok: false, error: { name: 'PetError', message: error.message || '操作未完成。', code: error.code || 'operation_failed', status: error.status || 0, request_id: error.request_id } }; }
+    catch (error) { return { ok: false, error: { name: 'PetError', message: error.message || '操作未完成。', code: error.code || 'operation_failed', status: error.status || 0, request_id: error.request_id, retry_after_sec: error.retry_after_sec } }; }
   });
 }
 
 function registerIPC() {
   handle('snapshot', snapshot);
   handle('settings', saveSettings);
+  handle('test-connection', async input => {
+    if (diagnosticBusy) throw new Error('已有连接检测正在进行，请稍候。');
+    diagnosticBusy = true;
+    try { return await testConnection(input, { server: settings.server, token, tokenUnavailable: Boolean(preservedEncryptedToken) }, { fetchImpl: (...args) => net.fetch(...args) }); }
+    finally { diagnosticBusy = false; }
+  });
+  handle('check-updates', () => updateChecker.check({ desktop: app.getVersion(), plugin: connection.pluginVersion }));
+  handle('open-release', async kind => { await shell.openExternal(updateChecker.url(kind)); return true; });
+  handle('copy-text', text => { if (typeof text !== 'string' || text.length > 20000) throw new Error('复制内容无效或过长。'); clipboard.writeText(text); return true; });
   handle('state', () => connection.getState());
   handle('reconnect', () => { connection.reconnect(); return true; });
   handle('action', (action, requestId) => connection.action(action, requestId));
@@ -243,6 +310,8 @@ function registerIPC() {
   handle('personas', () => connection.personas());
   handle('generate-lines', (kind, count) => connection.generateLines(kind, count));
   handle('open-control', openControl);
+  handle('open-quick-chat', openQuickChat);
+  handle('close-quick-chat', closeQuickChat);
   handle('reset-position', resetPosition);
   handle('quit', () => { quitting = true; app.quit(); });
   handle('choose-model', async () => {
@@ -283,7 +352,7 @@ function startMotion() {
       pet.setBounds(safeBounds(cursor.x - drag.offsetX, cursor.y - drag.offsetY)); return;
     }
     const cfg = connection.config;
-    if (!cfg.enable_roam || !pet.isVisible() || settings.clickThrough || connection.state?.is_sleeping || (connection.state && connection.state.energy < Number(cfg.sleepy_threshold ?? 20))) { roamEnd = 0; setMotion(connection.state?.is_sleeping ? 'sleep' : 'idle'); return; }
+    if (!cfg.enable_roam || !pet.isVisible() || quickChat?.isVisible() || companionMode.fullscreen || settings.clickThrough || connection.state?.is_sleeping || (connection.state && connection.state.energy < Number(cfg.sleepy_threshold ?? 20))) { roamEnd = 0; setMotion(connection.state?.is_sleeping ? 'sleep' : 'idle'); return; }
     if (now >= nextRoam && !roamEnd) { direction = Math.random() > 0.5 ? 1 : -1; roamEnd = now + 3000 + Math.random() * 4000; }
     if (!roamEnd) { setMotion('idle'); return; }
     if (now >= roamEnd) { roamEnd = 0; nextRoam = now + 15000 + Math.random() * 15000; rememberPosition(); setMotion('idle'); return; }
@@ -325,18 +394,23 @@ else {
   app.whenReady().then(() => {
     settingsPath = path.join(app.getPath('userData'), 'settings.json');
     loadSettings();
+    startupController = new StartupController(app);
+    const startup = startupController.status(); if (startup.supported) settings.launchAtLogin = startup.enabled;
+    updateChecker = new UpdateChecker({ fetchImpl: (...args) => net.fetch(...args) });
     connection = new PetConnection({ server: settings.server, token, speechPolicy: settings });
     connection.on('update', broadcast);
+    fullscreenMonitor = new FullscreenMonitor({ onChange: () => { applyCompanionMode(); broadcast({ type: 'settings', data: publicSettings() }); } });
     registerModelProtocol(); createWindows(); createTray(); registerIPC();
     globalShortcut.register('CommandOrControl+Alt+P', openControl);
     screen.on('display-removed', resetPosition);
-    screen.on('display-metrics-changed', resizePetAtFeet);
+    screen.on('display-metrics-changed', () => { resizePetAtFeet(); if (quickChat?.isVisible()) openQuickChat(); });
     connection.start(); startMotion();
+    if (settings.quietOnFullscreen) fullscreenMonitor.start();
   }).catch(error => { dialog.showErrorBox('AstrBot 桌宠启动失败', error.message); quitting = true; app.quit(); });
   app.on('activate', openControl);
   app.on('before-quit', () => {
     quitting = true; clearInterval(roamingTimer); clearTimeout(positionTimer);
-    globalShortcut.unregisterAll(); connection?.stop();
+    globalShortcut.unregisterAll(); fullscreenMonitor?.stop(); connection?.stop();
     if (pet && !pet.isDestroyed()) { const [x, y] = pet.getPosition(); settings.petX = x; settings.petY = y; }
     try { if (settingsPath) store(); } catch {}
     tray?.destroy(); tray = null;

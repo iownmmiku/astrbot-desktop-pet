@@ -6,7 +6,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { speechAllowed } = require('./speech_queue');
 
-const DEFAULT_SETTINGS = Object.freeze({ server: 'http://127.0.0.1:9898', modelPath: '', scale: 1, alwaysOnTop: true, clickThrough: false, quietMode: false, muteUntil: 0, petX: null, petY: null });
+const DEFAULT_SETTINGS = Object.freeze({ server: 'http://127.0.0.1:9898', modelPath: '', scale: 1, alwaysOnTop: true, clickThrough: false, quietMode: false, muteUntil: 0, launchAtLogin: false, startMinimized: false, quietOnFullscreen: true, petX: null, petY: null });
 const ACTIONS = new Set(['feed', 'clean', 'play', 'sleep', 'wake', 'poke']);
 const DEFAULT_BEHAVIOR = Object.freeze({ enable_chatter: true, chatter_lines: ['忙完了就陪我玩一会儿吧。', '我在这里陪你。'], chatter_interval_sec: 90, sleepy_lines: ['有一点困了……'], walk_speed: 1.5, sleepy_threshold: 20, enable_roam: true });
 
@@ -41,7 +41,7 @@ function normalizeSettings(input = {}, previous = DEFAULT_SETTINGS) {
     if (typeof input.scale !== 'number' || !Number.isFinite(input.scale) || input.scale < 0.5 || input.scale > 2) throw new Error('模型缩放须在 0.5–2 倍之间。');
     result.scale = input.scale;
   }
-  for (const key of ['alwaysOnTop', 'clickThrough', 'quietMode']) {
+  for (const key of ['alwaysOnTop', 'clickThrough', 'quietMode', 'launchAtLogin', 'startMinimized', 'quietOnFullscreen']) {
     if (key in input) {
       if (typeof input[key] !== 'boolean') throw new Error(`${key} 必须是开关值。`);
       result[key] = input[key];
@@ -96,9 +96,10 @@ function sanitizeState(state) {
 }
 
 class PetError extends Error {
-  constructor(message, { code = 'request_failed', status = 0, request_id } = {}) {
+  constructor(message, { code = 'request_failed', status = 0, request_id, retry_after_sec } = {}) {
     super(message); this.name = 'PetError'; this.code = code; this.status = status;
     if (request_id) this.request_id = request_id;
+    if (typeof retry_after_sec === 'number' && Number.isFinite(retry_after_sec) && retry_after_sec >= 0 && retry_after_sec <= 86400) this.retry_after_sec = retry_after_sec;
   }
 }
 function validateRequestId(value) {
@@ -118,10 +119,14 @@ class PetConnection extends EventEmitter {
     this.defaultRequestTimeout = requestTimeout;
     this.timeoutNegotiated = false;
     this.healthPromise = null;
-    this.speechPolicy = { ...speechPolicy };
+    this.setSpeechPolicy(speechPolicy);
     this.state = null;
     this.stateRevision = -1;
     this.stateEpoch = 0;
+    this.interactions = null;
+    this.interactionsRevision = -1;
+    this.pluginVersion = null;
+    this.capabilities = [];
     this.seenSpeech = new Map();
     this.config = { ...DEFAULT_BEHAVIOR };
     this.configEpoch = 0;
@@ -137,8 +142,14 @@ class PetConnection extends EventEmitter {
     this.stopped = true;
   }
 
-  snapshot() { return { state: this.state && { ...this.state }, config: { ...this.config }, petName: this.petName, status: { ...this.status }, requestTimeoutMs: this.requestTimeout }; }
-  setSpeechPolicy(policy) { this.speechPolicy = { quietMode: policy.quietMode === true, muteUntil: Number.isFinite(policy.muteUntil) ? policy.muteUntil : 0 }; }
+  snapshot() { return { state: this.state && { ...this.state }, config: { ...this.config }, petName: this.petName, status: { ...this.status }, requestTimeoutMs: this.requestTimeout,
+    interactions: this.interactions && { ...this.interactions, cooldowns: { ...this.interactions.cooldowns } }, pluginVersion: this.pluginVersion, capabilities: [...this.capabilities] }; }
+  setSpeechPolicy(policy = {}) { this.speechPolicy = { quietMode: policy.quietMode === true || policy.fullscreenQuiet === true, muteUntil: Number.isFinite(policy.muteUntil) ? policy.muteUntil : 0 }; }
+  mergeServiceInfo(info) {
+    if (!validObject(info)) return;
+    if (typeof info.plugin_version === 'string') this.pluginVersion = info.plugin_version.slice(0, 128);
+    if (Array.isArray(info.capabilities)) this.capabilities = [...new Set(info.capabilities.filter(value => typeof value === 'string' && value.length <= 64))].slice(0, 64);
+  }
   negotiateTimeout(seconds) {
     if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return;
     this.requestTimeout = Math.max(5000, Math.min(210000, Math.ceil(seconds * 1000) + 5000));
@@ -149,7 +160,7 @@ class PetConnection extends EventEmitter {
     if (!this.healthPromise) {
       const generation = this.generation;
       const pending = this.request('GET', 'api/health', undefined, Math.min(5000, this.requestTimeout))
-        .then(result => { if (generation === this.generation) { this.negotiateTimeout(result.request_timeout_sec); this.timeoutNegotiated = true; } })
+        .then(result => { if (generation === this.generation) { this.mergeServiceInfo(result); this.negotiateTimeout(result.request_timeout_sec); this.timeoutNegotiated = true; } })
         .catch(error => { if (generation !== this.generation) throw error; if (error.status === 404) this.timeoutNegotiated = true; /* Older plugins have no health endpoint. */ })
         .finally(() => { if (this.healthPromise === pending) this.healthPromise = null; });
       this.healthPromise = pending;
@@ -164,6 +175,32 @@ class PetConnection extends EventEmitter {
       if (Number.isSafeInteger(revision)) this.stateRevision = revision;
       this.state = state; this.emit('update', { type: 'state', data: { ...state }, revision });
     }
+  }
+  emitInteractions(value, revision = value?.revision) {
+    if (!validObject(value) || !validObject(value.cooldowns) || typeof value.server_time !== 'number' || !Number.isFinite(value.server_time) || value.server_time < 0) return;
+    if (Number.isSafeInteger(value.revision) && Number.isSafeInteger(revision) && value.revision !== revision) return;
+    const incomingRevision = Number.isSafeInteger(revision) && revision >= 0 ? revision : -1;
+    // Chat/decay revisions can advance without changing cooldowns. Order only
+    // against prior cooldown snapshots so a delayed action remains visible.
+    if (incomingRevision >= 0 && incomingRevision < this.interactionsRevision) return;
+    if (incomingRevision < 0 && this.interactionsRevision >= 0) return;
+    // Cached HTTP results must not restart a cooldown already received over WS.
+    if (this.interactions && incomingRevision <= this.interactionsRevision && value.server_time <= this.interactions.server_time) return;
+    const cooldowns = {};
+    for (const action of ACTIONS) {
+      const seconds = value.cooldowns[action] ?? 0;
+      if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0 || seconds > 86400) return;
+      cooldowns[action] = seconds;
+    }
+    this.interactionsRevision = incomingRevision;
+    this.interactions = { server_time: value.server_time, cooldowns, received_at_ms: Date.now() };
+    if (incomingRevision >= 0) this.interactions.revision = incomingRevision;
+    this.emit('update', { type: 'interactions', data: { ...this.interactions, cooldowns: { ...cooldowns } }, revision: incomingRevision >= 0 ? incomingRevision : undefined });
+  }
+  mergeStateResponse(result) {
+    this.mergeServiceInfo(result);
+    this.emitState(result.state, result.revision);
+    this.emitInteractions(result.interactions, result.revision);
   }
   emitSpeech(text, source, requestId) {
     if (typeof text !== 'string') return;
@@ -182,6 +219,7 @@ class PetConnection extends EventEmitter {
     if (typeof token !== 'string' || token.length > 4096) throw new Error('令牌格式无效。');
     this.stop();
     this.server = normalized; this.token = token; this.state = null; this.stateRevision = -1; this.stateEpoch++; this.seenSpeech.clear(); this.config = { ...DEFAULT_BEHAVIOR }; this.petName = '桌宠'; this.attempt = 0;
+    this.interactions = null; this.interactionsRevision = -1; this.pluginVersion = null; this.capabilities = [];
     this.requestTimeout = this.defaultRequestTimeout; this.timeoutNegotiated = false; this.healthPromise = null;
     this.emit('update', { type: 'connection_changed', server: this.server });
     this.start();
@@ -242,14 +280,16 @@ class PetConnection extends EventEmitter {
         clearTimeout(this.helloTimer);
         authenticated = true; this.attempt = 0;
         this.stateRevision = -1; this.stateEpoch++;
+        this.interactions = null; this.interactionsRevision = -1; this.pluginVersion = null; this.capabilities = [];
         this.negotiateTimeout(msg.request_timeout_sec);
         this.petName = typeof msg.pet_name === 'string' ? msg.pet_name.slice(0, 128) : '桌宠';
-        this.emitState(msg.state, msg.revision);
+        this.mergeStateResponse(msg);
         this.mergeConfig(msg.config || msg.behavior);
         this.setStatus('online', `已连接 · 插件 ${String(msg.plugin_version || '未知版本')}`);
         const configEpoch = this.configEpoch;
         this.request('GET', 'api/config', undefined, 10000).then(config => { if (current() && configEpoch === this.configEpoch) this.mergeConfig(config); }).catch(error => { if (current()) this.emit('update', { type: 'notice', text: `读取完整设置失败：${error.message}` }); });
       } else if (msg.type === 'state') this.emitState(msg.data, msg.revision);
+      else if (msg.type === 'interactions') this.emitInteractions(msg.data, msg.revision ?? msg.data?.revision);
       else if (msg.type === 'config') this.mergeConfig(msg.data);
       else if (msg.type === 'speak') this.emitSpeech(msg.text, typeof msg.source === 'string' ? msg.source : 'bot', msg.request_id);
     });
@@ -312,7 +352,7 @@ class PetConnection extends EventEmitter {
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) throw new PetError('令牌不匹配，请检查连接设置。', { code: 'unauthorized', status: response.status, request_id: requestId });
         const message = validObject(data) && typeof (data.message || data.error) === 'string' ? (data.message || data.error).slice(0, 300) : `HTTP ${response.status}`;
-        throw new PetError(message, { code: typeof data?.code === 'string' ? data.code : 'http_error', status: response.status, request_id: data?.request_id || requestId });
+        throw new PetError(message, { code: typeof data?.code === 'string' ? data.code : 'http_error', status: response.status, request_id: data?.request_id || requestId, retry_after_sec: data?.retry_after_sec });
       }
       if (generation !== this.generation) throw new PetError('连接设置已经变化，请重试。', { code: 'connection_changed', request_id: requestId });
       if (!validObject(data)) throw new PetError('插件返回的数据格式不正确。', { code: 'invalid_response', request_id: requestId });
@@ -325,7 +365,7 @@ class PetConnection extends EventEmitter {
     } finally { clearTimeout(timer); this.controllers.delete(controller); }
   }
 
-  async getState() { const epoch = this.stateEpoch; const result = await this.request('GET', 'api/state', undefined, 10000); if (epoch === this.stateEpoch) this.emitState(result.state, result.revision); return result; }
+  async getState() { const epoch = this.stateEpoch; const result = await this.request('GET', 'api/state', undefined, 10000); if (epoch === this.stateEpoch) this.mergeStateResponse(result); return { ...result, interactions: this.snapshot().interactions }; }
   async action(action, requestId = randomUUID()) {
     if (!ACTIONS.has(action)) throw new PetError('不支持的互动。', { code: 'invalid_request', request_id: requestId });
     validateRequestId(requestId);
@@ -333,9 +373,9 @@ class PetConnection extends EventEmitter {
     await this.ensureTimeout().catch(error => { error.request_id = requestId; throw error; });
     if (generation !== this.generation) throw new PetError('连接设置已经变化，请确认后重试。', { code: 'connection_changed', request_id: requestId });
     const epoch = this.stateEpoch;
-    const result = await this.request('POST', 'api/action', { action, request_id: requestId }); if (epoch === this.stateEpoch) this.emitState(result.state, result.revision);
+    const result = await this.request('POST', 'api/action', { action, request_id: requestId }); if (epoch === this.stateEpoch) this.mergeStateResponse(result);
     if (result.request_id || this.status.phase !== 'online') this.emitSpeech(result.reply, action, result.request_id);
-    return result;
+    return { ...result, interactions: this.snapshot().interactions };
   }
   async chat(text, requestId = randomUUID()) {
     if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new PetError('请输入 1–4000 字的聊天内容。', { code: 'invalid_request', request_id: requestId });
@@ -353,11 +393,14 @@ class PetConnection extends EventEmitter {
     if (!['chat', 'action'].includes(kind)) throw new PetError('请求种类无效。', { code: 'invalid_request', request_id: requestId });
     const epoch = this.stateEpoch;
     const result = await this.request('GET', `api/requests/${encodeURIComponent(requestId)}?kind=${kind}`, undefined, 10000).catch(error => { error.request_id = requestId; throw error; });
+    // The outer snapshot is current even when result contains a much older,
+    // successfully cached action. Apply it before the cached response.
+    if (epoch === this.stateEpoch) this.emitInteractions(result.interactions);
     if (result.status === 'completed' && validObject(result.result)) {
-      if (epoch === this.stateEpoch) this.emitState(result.result.state, result.result.revision);
+      if (epoch === this.stateEpoch) this.mergeStateResponse(result.result);
       this.emitSpeech(result.result.reply, result.result.action || kind, result.result.request_id || requestId);
     }
-    return result;
+    return { ...result, interactions: this.snapshot().interactions };
   }
   async saveConfig(config) {
     const epoch = this.configEpoch;

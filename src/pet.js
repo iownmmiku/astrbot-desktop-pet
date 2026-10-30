@@ -5,9 +5,10 @@ const $ = id => document.getElementById(id);
 let settings = {}, config = {}, state = null, application = null, model = null, modelKey = '', loadGeneration = 0;
 let lastSpeech = 0, lastInteraction = Date.now(), chatterTimer, clickTimer, pointer = null;
 let baseWidth = 1, baseHeight = 1;
+let companionFullscreen = false, speechHovered = false;
 let layout = { width: 360, height: 500, canvasWidth: 360, canvasHeight: 390, modelBoxWidth: 315, modelBoxHeight: 367, footY: 384, effectiveScale: 1 };
 const speechQueue = new PetSpeech.SpeechQueue({ onChange: ({ current, pending, paused }) => {
-  $('speech').hidden = !current;
+  $('speech').hidden = !current || companionFullscreen;
   if (current) {
     if ($('speech-text').textContent !== current.text) $('speech-text').textContent = current.text;
     $('speech-count').textContent = pending ? `还有 ${pending} 条` : paused ? '阅读中 · 移开鼠标后继续' : '移入气泡可暂停消失';
@@ -18,6 +19,15 @@ setInterval(() => speechQueue.tick(), 250);
 
 function speak(text, duration, source = 'notice', request_id, silent = false) {
   if (speechQueue.push({ text, duration, source, request_id, silent })) lastSpeech = Date.now();
+}
+
+function pauseSpeech() { speechQueue.setPaused(companionFullscreen || speechHovered || document.hidden); }
+
+function applyCompanionMode(mode) {
+  companionFullscreen = mode?.fullscreen === true;
+  pauseSpeech();
+  $('speech').hidden = companionFullscreen || !speechQueue.current;
+  if (!companionFullscreen) lastInteraction = Date.now();
 }
 
 function applyLayout(next) {
@@ -103,7 +113,7 @@ function scheduleChatter() {
   const seconds = Math.max(5, Math.min(86400, Number(config.chatter_interval_sec) || 90));
   chatterTimer = setTimeout(() => {
     const elapsed = Date.now() - Math.max(lastSpeech, lastInteraction);
-    if (config.enable_chatter && !state?.is_sleeping && PetSpeech.speechAllowed(settings, 'chatter') && elapsed >= seconds * 1000 && !pointer) {
+    if (!companionFullscreen && !document.hidden && config.enable_chatter && !state?.is_sleeping && PetSpeech.speechAllowed(settings, 'chatter') && elapsed >= seconds * 1000 && !pointer) {
       const sleepy = state && state.energy < Number(config.sleepy_threshold ?? 20);
       const candidates = sleepy ? config.sleepy_lines : config.chatter_lines;
       const lines = Array.isArray(candidates) ? candidates.filter(line => typeof line === 'string' && line.trim()) : [];
@@ -115,8 +125,8 @@ function scheduleChatter() {
 
 $('dismiss-speech').addEventListener('click', () => speechQueue.dismiss());
 $('next-speech').addEventListener('click', () => speechQueue.dismiss());
-$('speech').addEventListener('mouseenter', () => speechQueue.setPaused(true));
-$('speech').addEventListener('mouseleave', () => speechQueue.setPaused(false));
+$('speech').addEventListener('mouseenter', () => { speechHovered = true; pauseSpeech(); });
+$('speech').addEventListener('mouseleave', () => { speechHovered = false; pauseSpeech(); });
 $('open-control').addEventListener('click', () => api.openControl().catch(error => speak(error.message)));
 $('pet-stage').addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
@@ -134,7 +144,7 @@ function stopPointer(event) {
   const clicked = !pointer.moved && event.type === 'pointerup'; pointer = null;
   api.dragStop().catch(() => {}); api.petActive().catch(() => {});
   if (clicked) {
-    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; api.openControl().catch(error => speak(error.message)); }
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; api.openQuickChat().catch(error => speak(error.message)); }
     else clickTimer = setTimeout(() => {
       clickTimer = null; interactVisual();
       api.action('poke').catch(error => speak(error.message));
@@ -146,7 +156,7 @@ $('pet-stage').addEventListener('pointercancel', stopPointer);
 $('pet-stage').addEventListener('lostpointercapture', stopPointer);
 $('pet-stage').addEventListener('contextmenu', event => { event.preventDefault(); api.openControl().catch(error => speak(error.message)); });
 window.addEventListener('blur', () => { if (pointer) { pointer = null; api.dragStop().catch(() => {}); } });
-document.addEventListener('visibilitychange', () => { if (application) document.hidden ? application.stop() : application.start(); });
+document.addEventListener('visibilitychange', () => { pauseSpeech(); if (application) document.hidden ? application.stop() : application.start(); });
 
 api.onUpdate(message => {
   if (message.type === 'speak') { speak(message.text, undefined, message.source, message.request_id, message.silent); if (['feed', 'play', 'poke', 'clean'].includes(message.source)) interactVisual(message.source); }
@@ -155,11 +165,13 @@ api.onUpdate(message => {
   else if (message.type === 'settings') { settings = message.data; speechQueue.setPolicy(settings); applyLayout(settings.layout); loadModel(); }
   else if (message.type === 'layout') applyLayout(message.data);
   else if (message.type === 'motion') playMotion(message.state);
+  else if (message.type === 'companion_mode') applyCompanionMode(message.data);
   else if (message.type === 'notice') speak(message.text);
   else if (message.type === 'status') { $('pet-status').className = message.data.phase; $('pet-status').title = message.data.message; }
 });
 api.snapshot().then(data => {
   settings = data.settings; config = data.config; state = data.state;
+  if (data.companionMode) applyCompanionMode(data.companionMode);
   speechQueue.setPolicy(settings); applyLayout(settings.layout); applySleepState();
   $('pet-status').className = data.status.phase; $('pet-status').title = data.status.message;
   loadModel(); scheduleChatter();

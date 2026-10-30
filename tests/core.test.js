@@ -74,7 +74,7 @@ async function fixture(t, options = {}) {
     socket.on('close', () => sockets.delete(socket));
     socket.on('error', () => {});
     if (options.sendHello !== false) socket.send(JSON.stringify({ type: 'hello', state, revision,
-      pet_name: config.pet_name, config, plugin_version: 'test' }));
+      pet_name: config.pet_name, config, plugin_version: 'test', ...options.hello }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => {
@@ -418,4 +418,104 @@ test('malformed WS messages do not crash synchronization', async t => {
   server.send({ type: 'state', data: { ...initialState(), exp: 10 }, revision: 1 });
   await waitFor(() => pet.state.exp === 10);
   assert.equal(pet.status.phase, 'online');
+});
+
+test('cooldown snapshots synchronize across clients using the plugin interactions contract', async t => {
+  const cooldowns = { feed: 0, clean: 0, play: 0, sleep: 0, wake: 0, poke: 0 };
+  const initial = { server_time: 1000, revision: 0, cooldowns };
+  const current = { server_time: 1001, revision: 1, cooldowns: { ...cooldowns, feed: 9.75 } };
+  const server = await fixture(t, {
+    hello: { plugin_version: '0.5.0', capabilities: ['request_status', 'interactions'], interactions: initial },
+    onRequest: ({ req, res, body, respond, send }) => {
+      if (req.url !== '/api/action') return false;
+      const result = { reply: '投喂完成', action: 'feed', state: { ...initialState(), exp: 5 }, revision: 1,
+        request_id: body.request_id, interactions: current };
+      send({ type: 'state', data: result.state, revision: 1 });
+      send({ type: 'interactions', data: current, revision: 1 });
+      send({ type: 'speak', text: result.reply, source: 'feed', request_id: body.request_id });
+      respond(res, 200, result); return true;
+    }
+  });
+  const first = connection(t, server), second = connection(t, server);
+  first.start(); second.start();
+  await waitFor(() => first.status.phase === 'online' && second.status.phase === 'online');
+  assert.equal(first.snapshot().pluginVersion, '0.5.0');
+  assert.ok(first.snapshot().capabilities.includes('interactions'));
+  const result = await first.action('feed', 'cooldown-sync');
+  await waitFor(() => second.interactions?.cooldowns.feed === 9.75);
+  assert.equal(first.interactions.cooldowns.feed, result.interactions.cooldowns.feed);
+  assert.equal(second.interactions.revision, 1);
+  assert.ok(Number.isSafeInteger(second.interactions.received_at_ms));
+  const snapshot = first.snapshot();
+  snapshot.interactions.cooldowns.feed = 0; snapshot.capabilities.length = 0;
+  assert.equal(first.interactions.cooldowns.feed, 9.75);
+  assert.ok(first.capabilities.includes('interactions'));
+});
+
+test('cooldowns reject older and duplicate snapshots without restarting the local countdown', async t => {
+  const server = await fixture(t);
+  const pet = connection(t, server);
+  pet.emitInteractions({ server_time: 100, revision: 5, cooldowns: { feed: 10 } });
+  const receivedAt = pet.interactions.received_at_ms;
+  pet.emitInteractions({ server_time: 99, revision: 5, cooldowns: { feed: 11 } });
+  pet.emitInteractions({ server_time: 100, revision: 5, cooldowns: { feed: 10 } });
+  pet.emitInteractions({ server_time: 200, revision: 4, cooldowns: { feed: 0 } });
+  assert.equal(pet.interactions.cooldowns.feed, 10);
+  assert.equal(pet.interactions.received_at_ms, receivedAt);
+  pet.emitState(initialState(), 20); // Unrelated chat/decay must not hide a later action notification.
+  pet.emitInteractions({ server_time: 101, revision: 6, cooldowns: { feed: 8 } });
+  assert.equal(pet.interactions.cooldowns.feed, 8);
+  pet.emitInteractions({ server_time: 102, revision: 6, cooldowns: { feed: 7 } });
+  assert.equal(pet.interactions.cooldowns.feed, 7);
+  pet.emitInteractions({ server_time: 103, revision: 6, cooldowns: { feed: '6' } });
+  pet.emitInteractions({ server_time: NaN, revision: 7, cooldowns: { feed: 0 } });
+  pet.emitInteractions({ server_time: 103, revision: 7, cooldowns: { feed: 0 } }, 6);
+  assert.equal(pet.interactions.cooldowns.feed, 7);
+});
+
+test('hello resets cooldown ordering after plugin restart and stale HTTP cannot overwrite it', async t => {
+  let reply;
+  const initial = { server_time: 100, revision: 0, cooldowns: { feed: 0 } };
+  const server = await fixture(t, { hello: { interactions: initial }, onRequest: ({ req, res, respond }) => {
+    if (req.url !== '/api/state') return false;
+    reply = () => respond(res, 200, { state: initialState(), revision: 50,
+      interactions: { server_time: 150, revision: 50, cooldowns: { feed: 20 } } });
+    return true;
+  } });
+  const pet = connection(t, server); pet.start();
+  await waitFor(() => pet.status.phase === 'online');
+  server.send({ type: 'interactions', data: { server_time: 150, revision: 50, cooldowns: { feed: 20 } }, revision: 50 });
+  await waitFor(() => pet.interactionsRevision === 50);
+  const pending = pet.getState(); await waitFor(() => reply);
+  for (const socket of server.sockets) socket.terminate();
+  await waitFor(() => server.upgrades >= 2 && pet.status.phase === 'online');
+  assert.equal(pet.interactions.cooldowns.feed, 0);
+  assert.equal(pet.interactionsRevision, 0);
+  reply(); await pending;
+  assert.equal(pet.interactions.cooldowns.feed, 0);
+});
+
+test('current interactions protocol interoperates with the real Python plugin', { skip: !process.env.PET_INTEGRATION_URL }, async t => {
+  const options = { server: process.env.PET_INTEGRATION_URL, token: process.env.PET_INTEGRATION_TOKEN || '' };
+  const first = new PetConnection(options), second = new PetConnection(options);
+  t.after(() => { first.stop(); second.stop(); });
+  first.start(); second.start();
+  await waitFor(() => first.status.phase === 'online' && second.status.phase === 'online');
+  assert.equal(first.pluginVersion, '0.5.1');
+  assert.ok(first.capabilities.includes('interactions'));
+  const requestId = `cooldown-live-${Date.now()}`;
+  const result = await first.action('poke', requestId);
+  await waitFor(() => second.interactions?.revision === result.revision);
+  assert.equal(second.interactions.cooldowns.poke, result.interactions.cooldowns.poke);
+  assert.ok(second.interactions.cooldowns.poke > 0);
+  await assert.rejects(second.action('poke'), error => error.code === 'action_cooldown' && error.status === 429 && error.retry_after_sec > 0);
+  const timestamp = first.interactions.received_at_ms;
+  const recovery = await first.requestStatus(requestId, 'action');
+  assert.equal(recovery.status, 'completed');
+  const { received_at_ms, ...originalWireSnapshot } = result.interactions;
+  assert.deepEqual(recovery.result.interactions, originalWireSnapshot);
+  assert.ok(first.interactions.received_at_ms >= timestamp);
+  assert.ok(recovery.interactions.cooldowns.poke <= result.interactions.cooldowns.poke);
+  const state = await second.getState();
+  assert.ok(state.interactions.cooldowns.poke <= result.interactions.cooldowns.poke);
 });

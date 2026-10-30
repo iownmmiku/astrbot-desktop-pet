@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>和桌宠聊一会儿</title>
+  <link rel="stylesheet" href="quickchat.css">
+  <script src="quickchat.js" defer></script>
+</head>
+<body>
+  <header class="titlebar">
+    <div class="identity"><span class="flower" aria-hidden="true">✿</span><div><strong id="pet-name">桌宠</strong><span id="connection-status" class="connection-status">正在连接</span></div></div>
+    <div class="window-actions"><button id="open-control" title="打开完整控制台" aria-label="打开完整控制台">⋯</button><button id="close-chat" title="收起 · Esc" aria-label="收起聊天窗">×</button></div>
+  </header>
+  <div class="message-area">
+    <main>
+      <div id="empty-state" class="empty-state"><span aria-hidden="true">❀</span><p>我在这里，想说什么都可以。</p><small>聊几句，然后继续你的今天。</small></div>
+      <div id="messages" role="log" aria-label="最近的聊天" aria-live="polite" aria-relevant="additions text"></div>
+    </main>
+    <button id="new-messages" type="button" hidden>有新消息 · 跳到最新 ↓</button>
+  </div>
+  <section class="composer">
+    <p id="chat-status" role="status">Enter 发送，Shift + Enter 换行。</p>
+    <div id="chat-recovery" class="recovery" hidden><p id="recovery-note">可以检查原请求的结果，或沿用原请求重试。</p><div><button id="check-chat" type="button">检查结果</button><button id="retry-chat" type="button">重试原请求</button></div></div>
+    <form id="chat-form">
+      <label class="sr-only" for="chat-input">想对桌宠说的话</label>
+      <textarea id="chat-input" rows="3" maxlength="4000" placeholder="想和我说点什么？" spellcheck="false" autofocus></textarea>
+      <div class="composer-footer"><span><span id="char-count">0</span> / 4000 <span class="keyboard-hint">· Esc 收起，草稿保留</span></span><button id="send-chat" type="submit" disabled>发送 <span aria-hidden="true">↗</span></button></div>
+    </form>
+  </section>
+</body>
+</html>

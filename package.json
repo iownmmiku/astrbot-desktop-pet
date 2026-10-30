@@ -1,6 +1,6 @@
 {
   "name": "astrbot-desktop-pet",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "AstrBot Live2D 桌宠 · 稳定性重建版",
   "main": "src/main.js",
   "author": "iownmmiku",

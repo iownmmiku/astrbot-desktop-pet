@@ -109,6 +109,21 @@ test('sleep fields remain optional for older plugins and local quiet settings va
   assert.throws(() => normalizeSettings({ muteUntil: Infinity }));
 });
 
+test('startup and fullscreen preferences have strict booleans and stable defaults', () => {
+  const defaults = normalizeSettings({});
+  assert.equal(defaults.launchAtLogin, false);
+  assert.equal(defaults.startMinimized, false);
+  assert.equal(defaults.quietOnFullscreen, true);
+  const configured = normalizeSettings({ launchAtLogin: true, startMinimized: true, quietOnFullscreen: false });
+  assert.equal(configured.launchAtLogin, true);
+  assert.equal(configured.startMinimized, true);
+  assert.equal(configured.quietOnFullscreen, false);
+  for (const key of ['launchAtLogin', 'startMinimized', 'quietOnFullscreen']) {
+    for (const value of ['true', 1, null, []]) assert.throws(() => normalizeSettings({ [key]: value }));
+  }
+  assert.equal('fullscreenQuiet' in normalizeSettings({ fullscreenQuiet: true }), false);
+});
+
 test('health timeout negotiation applies before long mutation and stays bounded', async () => {
   const calls = [];
   const connection = new PetConnection({ requestTimeout: 20, fetchImpl: async (url, options) => {
@@ -151,10 +166,72 @@ test('completed request lookup recovers reply and state exactly once', async () 
   connection.stop();
 });
 
+test('HTTP state and completed action lookup restore cooldowns and service metadata', async () => {
+  const interactions = { server_time: 100, revision: 2, cooldowns: { feed: 8 } };
+  const connection = new PetConnection({ fetchImpl: url => url.includes('/api/requests/')
+    ? reply({ status: 'completed', request_id: 'recover', result: { reply: '完成', action: 'feed', state: initialState(), revision: 2, interactions, request_id: 'recover' } })
+    : reply({ state: initialState(), revision: 2, interactions, plugin_version: '0.5.0', capabilities: ['interactions'] }) });
+  const events = []; connection.on('update', value => events.push(value));
+  await connection.getState();
+  const timestamp = connection.interactions.received_at_ms;
+  await connection.requestStatus('recover', 'action');
+  assert.equal(connection.interactions.cooldowns.feed, 8);
+  assert.equal(connection.interactions.received_at_ms, timestamp);
+  assert.equal(connection.snapshot().pluginVersion, '0.5.0');
+  assert.deepEqual(connection.snapshot().capabilities, ['interactions']);
+  assert.equal(events.filter(value => value.type === 'interactions').length, 1);
+  assert.equal(events.find(value => value.type === 'speak').source, 'feed');
+  connection.stop();
+});
+
+test('cold request lookup applies current outer cooldowns before the older cached action', async () => {
+  const cached = { reply: '此前已完成', action: 'feed', request_id: 'old', state: initialState(), revision: 2,
+    interactions: { server_time: 100, revision: 2, cooldowns: { feed: 10 } } };
+  const current = { server_time: 160, revision: 2, cooldowns: { feed: 0 } };
+  const connection = new PetConnection({ fetchImpl: () => reply({ status: 'completed', request_id: 'old', result: cached, interactions: current }) });
+  const updates = []; connection.on('update', value => { if (value.type === 'interactions') updates.push(value); });
+  const lookup = await connection.requestStatus('old', 'action');
+  assert.equal(connection.interactions.cooldowns.feed, 0);
+  assert.equal(lookup.interactions.cooldowns.feed, 0);
+  assert.ok(Number.isSafeInteger(lookup.interactions.received_at_ms));
+  assert.deepEqual(lookup.result, cached); // The original operation remains an unmodified historical result.
+  assert.equal(updates.length, 1);
+  connection.stop();
+});
+
+test('action results returned to the UI contain the accepted local cooldown snapshot', async () => {
+  let finish;
+  const connection = new PetConnection({ fetchImpl: () => new Promise(resolve => { finish = () => resolve({ ok: true, status: 200, json: async () => ({ reply: '完成', action: 'feed', state: initialState(), revision: 1,
+    request_id: 'older-action', interactions: { server_time: 100, revision: 1, cooldowns: { feed: 10 } } }) }); }) });
+  connection.timeoutNegotiated = true;
+  const pending = connection.action('feed', 'older-action');
+  while (!finish) await new Promise(resolve => setTimeout(resolve, 1));
+  connection.emitInteractions({ server_time: 101, revision: 2, cooldowns: { feed: 9, play: 10 } });
+  const expected = connection.snapshot().interactions;
+  finish();
+  const result = await pending;
+  assert.deepEqual(result.interactions, expected);
+  assert.equal(result.interactions.revision, 2);
+  assert.ok(Number.isSafeInteger(result.interactions.received_at_ms));
+  result.interactions.cooldowns.feed = 0;
+  assert.equal(connection.interactions.cooldowns.feed, 9);
+  connection.stop();
+});
+
 test('API errors retain machine code, status, and caller request ID', async () => {
   const connection = new PetConnection({ fetchImpl: () => reply({ error: '此 ID 已用于其他文本', code: 'request_conflict' }, 409) });
   connection.timeoutNegotiated = true;
   await assert.rejects(connection.chat('文本', 'conflict'), error => error.code === 'request_conflict' && error.status === 409 && error.request_id === 'conflict');
+  connection.stop();
+});
+
+test('cooldown errors preserve the server retry delay without accepting malformed metadata', async () => {
+  let wait = 9;
+  const connection = new PetConnection({ fetchImpl: () => reply({ error: '互动正在冷却', code: 'action_cooldown', retry_after_sec: wait }, 429) });
+  connection.timeoutNegotiated = true;
+  await assert.rejects(connection.action('feed', 'cooling'), error => error.status === 429 && error.request_id === 'cooling' && error.retry_after_sec === 9);
+  wait = '9';
+  await assert.rejects(connection.action('feed'), error => error.code === 'action_cooldown' && !('retry_after_sec' in error));
   connection.stop();
 });
 
@@ -163,6 +240,19 @@ test('quiet mode marks platform speech silent while preserving chat and record d
   const records = []; connection.on('update', item => records.push(item));
   connection.emitSpeech('平台消息', 'bot', 'bot-1'); connection.emitSpeech('主动聊天', 'chat', 'chat-1');
   assert.equal(records[0].silent, true); assert.equal(records[1].silent, false);
+  connection.stop();
+});
+
+test('temporary fullscreen silence preserves direct replies and does not persist in settings', () => {
+  const connection = new PetConnection({ speechPolicy: { fullscreenQuiet: true } });
+  const events = []; connection.on('update', value => events.push(value));
+  connection.emitSpeech('平台推送', 'bot', 'fullscreen-bot');
+  connection.emitSpeech('主动互动', 'feed', 'fullscreen-feed');
+  assert.equal(events[0].silent, true); assert.equal(events[1].silent, false);
+  connection.setSpeechPolicy({ quietMode: false, fullscreenQuiet: false });
+  connection.emitSpeech('恢复推送', 'bot', 'restored-bot');
+  assert.equal(events[2].silent, false);
+  assert.equal(normalizeSettings({}).quietMode, false);
   connection.stop();
 });
 
