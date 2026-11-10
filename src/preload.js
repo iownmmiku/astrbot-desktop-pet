@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('petAPI', Object.freeze({
   dragStart: () => invoke('drag-start'),
   dragStop: () => invoke('drag-stop'),
   petActive: () => invoke('pet-active'),
+  setMouseThrough: ignore => invoke('mouse-through', ignore === true),
   onUpdate: callback => {
     if (typeof callback !== 'function') return () => {};
     const handler = (_event, message) => callback(message);

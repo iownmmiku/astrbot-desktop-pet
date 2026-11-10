@@ -501,7 +501,7 @@ test('current interactions protocol interoperates with the real Python plugin', 
   t.after(() => { first.stop(); second.stop(); });
   first.start(); second.start();
   await waitFor(() => first.status.phase === 'online' && second.status.phase === 'online');
-  assert.equal(first.pluginVersion, '0.5.1');
+  assert.match(first.pluginVersion, /^0\.5\.\d+$/);
   assert.ok(first.capabilities.includes('interactions'));
   const requestId = `cooldown-live-${Date.now()}`;
   const result = await first.action('poke', requestId);

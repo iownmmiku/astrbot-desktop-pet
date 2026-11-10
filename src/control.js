@@ -427,7 +427,7 @@ api.snapshot().then(data => {
   applyInteractions(data.interactions);
   currentName = data.petName || currentName; $('pet-name').textContent = currentName;
   $('app-version').textContent = `v${data.appVersion}`;
-  $('desktop-version-current').textContent = data.appVersion || '0.8.1';
+  $('desktop-version-current').textContent = data.appVersion || '未知';
   $('plugin-version-current').textContent = data.pluginVersion || '未连接 / 未知';
   if (data.notice) notice(data.notice);
 }).catch(error => notice(error.message));

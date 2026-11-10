@@ -68,6 +68,7 @@ async function loadModel() {
     application.stage.addChild(model); fitModel();
     $('live2d').hidden = false; $('fallback').hidden = true;
     application.ticker.maxFPS = 30;
+    if (!application.renderer.listeners('postrender').includes(sampleHitPixel)) application.renderer.on('postrender', sampleHitPixel);
     applySleepState();
   } catch (error) {
     if (generation !== loadGeneration) return;
@@ -123,6 +124,62 @@ function scheduleChatter() {
   }, seconds * 1000);
 }
 
+// --- Click-through for transparent areas -----------------------------------
+// The window is a rectangle, but only the painted model, the cat fallback, the
+// bubble and the toolbar should take the mouse. Elsewhere clicks go to the
+// desktop. While ignored, Electron still forwards mousemove so we can re-enable.
+const HIT_RADIUS = 2, HIT_ALPHA = 12;
+const hitPixels = new Uint8Array((HIT_RADIUS * 2 + 1) ** 2 * 4);
+let hover = null, hitSample = null, passThroughSent = null;
+
+function setPassThrough(ignore) {
+  if (passThroughSent === ignore) return;
+  passThroughSent = ignore;
+  api.setMouseThrough(ignore).catch(() => { passThroughSent = null; });
+}
+
+function domHit(x, y) {
+  const element = document.elementFromPoint(x, y);
+  if (!element) return 'none';
+  if (element.closest('#speech, .pet-toolbar')) return 'ui';
+  // SVG shapes are hit only where painted; the <svg> box itself is transparent.
+  if (element.closest('#fallback') && !$('fallback').hidden && element.closest('svg') && element.tagName.toLowerCase() !== 'svg') return 'ui';
+  if (element === $('live2d') && model && !$('live2d').hidden) return 'canvas';
+  return 'none';
+}
+
+function evaluateHover() {
+  if (!hover || pointer) return;
+  const hit = domHit(hover.x, hover.y);
+  if (hit === 'canvas') { hitSample = { ...hover }; return; } // resolved after the next frame renders
+  setPassThrough(hit === 'none');
+}
+
+// Runs right after PIXI draws a frame, while the drawing buffer is still valid.
+function sampleHitPixel() {
+  if (!hitSample || !application) return;
+  const sample = hitSample; hitSample = null;
+  const canvas = $('live2d'), rect = canvas.getBoundingClientRect(), gl = application.renderer.gl;
+  const resolution = application.renderer.resolution;
+  const px = Math.floor((sample.x - rect.left) * resolution) - HIT_RADIUS;
+  const py = canvas.height - Math.floor((sample.y - rect.top) * resolution) - 1 - HIT_RADIUS;
+  let painted = false;
+  try {
+    gl.readPixels(px, py, HIT_RADIUS * 2 + 1, HIT_RADIUS * 2 + 1, gl.RGBA, gl.UNSIGNED_BYTE, hitPixels);
+    for (let index = 3; index < hitPixels.length; index += 4) if (hitPixels[index] > HIT_ALPHA) { painted = true; break; }
+  } catch { painted = true; }
+  if (!pointer) setPassThrough(!painted);
+}
+
+document.addEventListener('mousemove', event => { hover = { x: event.clientX, y: event.clientY }; evaluateHover(); });
+
+// Gaze follows the cursor across the whole screen (positions come from main).
+function lookAt(x, y) {
+  if (!model || state?.is_sleeping) return;
+  const rect = $('live2d').getBoundingClientRect();
+  model.focus(x - rect.left, y - rect.top);
+}
+
 $('dismiss-speech').addEventListener('click', () => speechQueue.dismiss());
 $('next-speech').addEventListener('click', () => speechQueue.dismiss());
 $('speech').addEventListener('mouseenter', () => { speechHovered = true; pauseSpeech(); });
@@ -137,7 +194,7 @@ $('pet-stage').addEventListener('pointerdown', event => {
 });
 $('pet-stage').addEventListener('pointermove', event => {
   if (pointer && Math.hypot(event.screenX - pointer.x, event.screenY - pointer.y) > 4) pointer.moved = true;
-  if (model && !pointer) model.focus(event.offsetX, event.offsetY);
+  if (!pointer) lookAt(event.clientX, event.clientY);
 });
 function stopPointer(event) {
   if (!pointer) return;
@@ -164,6 +221,7 @@ api.onUpdate(message => {
   else if (message.type === 'config') { config = message.data; scheduleChatter(); }
   else if (message.type === 'settings') { settings = message.data; speechQueue.setPolicy(settings); applyLayout(settings.layout); loadModel(); }
   else if (message.type === 'layout') applyLayout(message.data);
+  else if (message.type === 'gaze') { if (!pointer && Number.isFinite(message.x) && Number.isFinite(message.y)) lookAt(message.x, message.y); }
   else if (message.type === 'motion') playMotion(message.state);
   else if (message.type === 'companion_mode') applyCompanionMode(message.data);
   else if (message.type === 'notice') speak(message.text);

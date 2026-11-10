@@ -19,10 +19,19 @@ let control = null, pet = null, quickChat = null, tray = null, connection = null
 let startupController = null, fullscreenMonitor = null, updateChecker = null, diagnosticBusy = false;
 let companionMode = { fullscreen: false };
 let settings = { ...DEFAULT_SETTINGS }, token = '', preservedEncryptedToken = '', startupNotice = '', modelRoot = null;
-let settingsPath, drag = null, positionTimer = null, roamingTimer = null, lastRoam = Date.now(), nextRoam = Date.now() + 15000, roamEnd = 0, direction = 1;
+let settingsPath, drag = null, positionTimer = null, motionTimer = null, lastRoam = Date.now(), nextRoam = Date.now() + 15000, roamEnd = 0, direction = 1;
 let pendingSettingsBackup = false;
 let currentLayout = petLayout();
 let currentMotion = 'idle';
+let modelCache = null;
+// Transparent pixels pass clicks through to the desktop. Mouse forwarding is
+// only available on Windows and macOS; elsewhere the whole window stays hit-testable.
+const hitTestSupported = ['win32', 'darwin'].includes(process.platform);
+let hitPassThrough = false;
+let lastGaze = null, lastGazeAt = 0;
+// Motion cadence: drag follows the cursor at ~60 Hz, walking at 20 Hz, gaze at
+// 10 Hz; when nothing moves, the loop only wakes once a second.
+const MOTION_DELAY = { drag: 16, walk: 50, gaze: 100, idle: 1000 };
 
 function setMotion(state) {
   if (currentMotion !== state) { currentMotion = state; broadcast({ type: 'motion', state }); }
@@ -32,7 +41,16 @@ function broadcast(message) {
   for (const win of [control, pet, quickChat]) if (win && !win.isDestroyed()) win.webContents.send('pet:update', message);
 }
 
+// publicSettings() runs on every settings/fullscreen broadcast; parse the model
+// manifest only when the selected path changes.
 function modelInfo() {
+  if (modelCache?.key === settings.modelPath) { modelRoot = modelCache.root; return { ...modelCache.info }; }
+  const info = readModelInfo();
+  modelCache = { key: settings.modelPath, root: modelRoot, info };
+  return { ...info };
+}
+
+function readModelInfo() {
   let filename = settings.modelPath;
   if (!filename) {
     const bundled = path.join(app.getAppPath(), 'models', 'Haru', 'Haru.model3.json');
@@ -160,7 +178,7 @@ function createWindows() {
   currentLayout = petLayout(settings.scale, area);
   const initial = safeBounds(settings.petX ?? area.x + area.width - currentLayout.width - 30, settings.petY ?? area.y + area.height - currentLayout.height);
   pet = new BrowserWindow({ ...initial, transparent: true, frame: false, resizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, hasShadow: false, alwaysOnTop: settings.alwaysOnTop, show: false, backgroundColor: '#00000000', webPreferences: { ...prefs, backgroundThrottling: true } });
-  pet.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
+  applyMouseMode();
   pet.once('ready-to-show', () => { if (!companionMode.fullscreen) pet.showInactive(); });
   pet.on('close', event => { if (!quitting) event.preventDefault(); });
   pet.on('blur', () => { if (drag) stopDrag(); });
@@ -266,7 +284,7 @@ function saveSettings(patch) {
   if (settings.quietOnFullscreen) fullscreenMonitor?.start(); else fullscreenMonitor?.stop();
   applyCompanionMode();
   pet.setAlwaysOnTop(settings.alwaysOnTop);
-  pet.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
+  applyMouseMode();
   if (quickChat && !quickChat.isDestroyed()) quickChat.setAlwaysOnTop(settings.alwaysOnTop);
   if (resized) resizePetAtFeet();
   updateTray();
@@ -320,7 +338,7 @@ function registerIPC() {
     const candidate = result.filePaths[0];
     if (!candidate.toLowerCase().endsWith('.model3.json')) throw new Error('请选择模型文件夹内的 .model3.json 文件；模型包请先解压。');
     const previous = settings;
-    settings = { ...settings, modelPath: candidate };
+    settings = { ...settings, modelPath: candidate }; modelCache = null;
     const info = modelInfo();
     if (info.error) { settings = previous; modelInfo(); throw new Error(info.error); }
     try { store(); } catch (error) { settings = previous; modelInfo(); throw error; }
@@ -334,36 +352,69 @@ function registerIPC() {
   handle('drag-start', () => {
     const cursor = screen.getCursorScreenPoint(); const [x, y] = pet.getPosition();
     drag = { offsetX: cursor.x - x, offsetY: cursor.y - y, expires: Date.now() + 30000 };
+    if (hitPassThrough) { hitPassThrough = false; applyMouseMode(); }
+    scheduleMotion(0);
   }, true);
   handle('drag-stop', stopDrag, true);
   handle('pet-active', () => { nextRoam = Date.now() + 15000; roamEnd = 0; setMotion(connection.state?.is_sleeping ? 'sleep' : 'idle'); }, true);
+  // The renderer hit-tests the cursor against painted pixels and asks to let
+  // clicks on transparent areas fall through to whatever is underneath.
+  handle('mouse-through', ignore => {
+    const next = hitTestSupported && ignore === true && !drag;
+    if (next !== hitPassThrough) { hitPassThrough = next; applyMouseMode(); }
+    return next;
+  }, true);
+}
+
+function applyMouseMode() {
+  if (pet && !pet.isDestroyed()) pet.setIgnoreMouseEvents(settings.clickThrough || hitPassThrough, { forward: true });
 }
 
 function stopDrag() { if (drag) { drag = null; rememberPosition(); nextRoam = Date.now() + 15000; roamEnd = 0; setMotion(connection.state?.is_sleeping ? 'sleep' : 'idle'); } }
 
-function startMotion() {
-  roamingTimer = setInterval(() => {
-    const now = Date.now(); const elapsed = Math.min(0.1, (now - lastRoam) / 1000); lastRoam = now;
-    if (!pet || pet.isDestroyed()) return;
-    if (drag) {
-      setMotion('drag');
-      if (now > drag.expires) { stopDrag(); return; }
-      const cursor = screen.getCursorScreenPoint();
-      pet.setBounds(safeBounds(cursor.x - drag.offsetX, cursor.y - drag.offsetY)); return;
-    }
-    const cfg = connection.config;
-    if (!cfg.enable_roam || !pet.isVisible() || quickChat?.isVisible() || companionMode.fullscreen || settings.clickThrough || connection.state?.is_sleeping || (connection.state && connection.state.energy < Number(cfg.sleepy_threshold ?? 20))) { roamEnd = 0; setMotion(connection.state?.is_sleeping ? 'sleep' : 'idle'); return; }
-    if (now >= nextRoam && !roamEnd) { direction = Math.random() > 0.5 ? 1 : -1; roamEnd = now + 3000 + Math.random() * 4000; }
-    if (!roamEnd) { setMotion('idle'); return; }
-    if (now >= roamEnd) { roamEnd = 0; nextRoam = now + 15000 + Math.random() * 15000; rememberPosition(); setMotion('idle'); return; }
-    setMotion('walk');
-    const [x, y] = pet.getPosition();
-    const speed = Math.max(0.2, Math.min(10, Number(cfg.walk_speed) || 1.5));
-    const requestedX = x + direction * speed * 60 * elapsed;
-    const bounds = safeBounds(requestedX, y);
-    if (Math.abs(bounds.x - requestedX) > 1) direction *= -1;
-    pet.setBounds(bounds);
-  }, 50);
+function scheduleMotion(delay) {
+  clearTimeout(motionTimer);
+  motionTimer = quitting ? null : setTimeout(() => { motionTimer = null; if (!quitting) scheduleMotion(motionTick()); }, Math.max(0, Math.round(delay)));
+}
+
+// Sends the cursor position relative to the pet window so the model can look
+// at it anywhere on screen. Returns whether gaze tracking is currently active.
+function updateGaze(now) {
+  if (!pet.isVisible() || companionMode.fullscreen || connection.state?.is_sleeping) { lastGaze = null; return false; }
+  if (now - lastGazeAt < MOTION_DELAY.gaze) return true;
+  lastGazeAt = now;
+  const cursor = screen.getCursorScreenPoint(); const bounds = pet.getBounds();
+  const gaze = { x: cursor.x - bounds.x, y: cursor.y - bounds.y };
+  if (!lastGaze || lastGaze.x !== gaze.x || lastGaze.y !== gaze.y) { lastGaze = gaze; pet.webContents.send('pet:update', { type: 'gaze', ...gaze }); }
+  return true;
+}
+
+function startMotion() { lastRoam = Date.now(); scheduleMotion(0); }
+
+// One motion step; returns the delay until the next step is needed.
+function motionTick() {
+  const now = Date.now(); const elapsed = Math.min(0.1, (now - lastRoam) / 1000); lastRoam = now;
+  if (!pet || pet.isDestroyed()) return MOTION_DELAY.idle;
+  if (drag) {
+    setMotion('drag');
+    if (now > drag.expires) { stopDrag(); return MOTION_DELAY.walk; }
+    const cursor = screen.getCursorScreenPoint();
+    pet.setBounds(safeBounds(cursor.x - drag.offsetX, cursor.y - drag.offsetY)); return MOTION_DELAY.drag;
+  }
+  const rest = updateGaze(now) ? MOTION_DELAY.gaze : MOTION_DELAY.idle;
+  const cfg = connection.config;
+  if (!cfg.enable_roam || !pet.isVisible() || quickChat?.isVisible() || companionMode.fullscreen || settings.clickThrough || connection.state?.is_sleeping || (connection.state && connection.state.energy < Number(cfg.sleepy_threshold ?? 20))) { roamEnd = 0; setMotion(connection.state?.is_sleeping ? 'sleep' : 'idle'); return rest; }
+  if (now >= nextRoam && !roamEnd) { direction = Math.random() > 0.5 ? 1 : -1; roamEnd = now + 3000 + Math.random() * 4000; }
+  if (!roamEnd) { setMotion('idle'); return Math.max(MOTION_DELAY.drag, Math.min(rest, nextRoam - now)); }
+  if (now >= roamEnd) { roamEnd = 0; nextRoam = now + 15000 + Math.random() * 15000; rememberPosition(); setMotion('idle'); return rest; }
+  setMotion('walk');
+  const [x, y] = pet.getPosition();
+  const speed = Math.max(0.2, Math.min(10, Number(cfg.walk_speed) || 1.5));
+  const requestedX = x + direction * speed * 60 * elapsed;
+  const bounds = safeBounds(requestedX, y);
+  if (Math.abs(bounds.x - requestedX) > 1) direction *= -1;
+  pet.setBounds(bounds);
+  return MOTION_DELAY.walk;
 }
 
 function registerModelProtocol() {
@@ -409,7 +460,7 @@ else {
   }).catch(error => { dialog.showErrorBox('AstrBot 桌宠启动失败', error.message); quitting = true; app.quit(); });
   app.on('activate', openControl);
   app.on('before-quit', () => {
-    quitting = true; clearInterval(roamingTimer); clearTimeout(positionTimer);
+    quitting = true; clearTimeout(motionTimer); motionTimer = null; clearTimeout(positionTimer);
     globalShortcut.unregisterAll(); fullscreenMonitor?.stop(); connection?.stop();
     if (pet && !pet.isDestroyed()) { const [x, y] = pet.getPosition(); settings.petX = x; settings.petY = y; }
     try { if (settingsPath) store(); } catch {}

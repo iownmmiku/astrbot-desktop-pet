@@ -151,7 +151,7 @@ async function boot(t, options = {}) {
   vm.runInNewContext(source, {
     require(id) { assert.ok(Object.hasOwn(mocks, id), `Unexpected require: ${id}`); return mocks[id]; },
     __dirname: sourceDir, Buffer, URL, Response,
-    process: { env: {}, argv: ['electron', sourceDir, ...(options.argv || [])] },
+    process: { env: {}, platform: options.platform ?? 'win32', argv: ['electron', sourceDir, ...(options.argv || [])] },
     setTimeout: (fn, delay) => setTimer(fn, delay, false), clearTimeout: id => timers.delete(id),
     setInterval: (fn, delay) => setTimer(fn, delay, true), clearInterval: id => timers.delete(id)
   }, { filename: path.join(sourceDir, 'main.js') });
@@ -347,4 +347,46 @@ test('switching server clears an undecryptable old token while an unchanged serv
   assert.equal(changed.ok, true); assert.equal(changed.value.tokenConfigured, false); assert.equal(changed.value.tokenUnavailable, false);
   assert.equal(h.writes.at(-1).value.encryptedToken, '');
   assert.deepEqual(h.connection.configured, [{ server: 'https://new.example/pet', token: '' }]);
+});
+
+const motionTimer = h => [...h.timers.entries()].filter(([, timer]) => !timer.interval && timer.delay !== 700).at(-1);
+function runMotion(h) {
+  const [id, timer] = motionTimer(h); h.timers.delete(id); timer.fn();
+  return motionTimer(h)?.[1].delay;
+}
+
+test('pet click-through combines the renderer hit test with the saved preference and yields to drags', async t => {
+  const h = await boot(t), pet = h.windowFor('pet'), control = h.windowFor('control');
+  assert.equal(pet.clickThrough, false);
+  assert.equal((await h.invoke('mouse-through', control, true)).ok, false, 'only the pet window may change its hit testing');
+  assert.equal((await h.invoke('mouse-through', pet, true)).value, true); assert.equal(pet.clickThrough, true);
+  assert.equal((await h.invoke('mouse-through', pet, 'yes')).value, false); assert.equal(pet.clickThrough, false);
+  await h.invoke('settings', control, { clickThrough: true }); assert.equal(pet.clickThrough, true, 'the saved preference always wins');
+  await h.invoke('settings', control, { clickThrough: false }); assert.equal(pet.clickThrough, false);
+  await h.invoke('mouse-through', pet, true);
+  await h.invoke('drag-start', pet); assert.equal(pet.clickThrough, false, 'a drag always keeps the window hit-testable');
+  assert.equal((await h.invoke('mouse-through', pet, true)).value, false); assert.equal(pet.clickThrough, false);
+});
+
+test('platforms without mouse forwarding keep the whole pet window clickable', async t => {
+  const h = await boot(t, { platform: 'linux' }), pet = h.windowFor('pet');
+  assert.equal((await h.invoke('mouse-through', pet, true)).value, false); assert.equal(pet.clickThrough, false);
+});
+
+test('motion loop sleeps when idle, speeds up for drags and sends screen-wide gaze', async t => {
+  const h = await boot(t), pet = h.windowFor('pet');
+  assert.equal(motionTimer(h)[1].delay, 0);
+  assert.ok([...h.timers.values()].every(timer => !timer.interval), 'no fixed-rate interval keeps the main process awake');
+  assert.equal(runMotion(h), 100, 'a visible, awake pet only wakes for gaze updates');
+  const bounds = pet.getBounds();
+  assert.deepEqual(pet.messages.filter(({ message }) => message.type === 'gaze').map(({ message }) => message), [{ type: 'gaze', x: 800 - bounds.x, y: 500 - bounds.y }]);
+  h.monitor.change(true);
+  assert.equal(runMotion(h), 1000, 'a hidden pet only checks once a second');
+  h.monitor.change(false);
+  await h.invoke('drag-start', pet);
+  assert.equal(motionTimer(h)[1].delay, 0, 'starting a drag wakes the loop immediately');
+  assert.equal(runMotion(h), 16);
+  assert.equal(pet.getBounds().x, bounds.x, 'the window follows the cursor offset captured at drag start');
+  await h.invoke('drag-stop', pet);
+  h.app.emit('before-quit'); assert.equal(motionTimer(h), undefined);
 });
