@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- App icon: the built-in cream cat (src/pet.html) on a sage tile. Render with scripts/render-icon.js. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9dba86"/>
+      <stop offset="1" stop-color="#6f9163"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#tile)"/>
+  <ellipse cx="256" cy="452" rx="150" ry="16" fill="#3f5236" opacity=".18"/>
+  <g transform="translate(256 286) scale(2.2) translate(-150 -132)" stroke-linejoin="round">
+    <path d="M82 121 L69 57 Q70 43 83 51 L127 80 M218 121 L231 57 Q230 43 217 51 L173 80" fill="#f4e7ce" stroke="#d8c39d" stroke-width="3"/>
+    <path d="M88 99 L81 64 L109 84 M212 99 L219 64 L191 84" fill="#e9baa8"/>
+    <path d="M69 136 Q68 77 150 77 Q232 77 231 136 Q239 204 150 211 Q61 204 69 136" fill="#fbf3e2" stroke="#d8c39d" stroke-width="3"/>
+    <path d="M132 80 L135 99 M151 78 L151 99 M170 80 L167 99" stroke="#dfc69d" stroke-width="6" stroke-linecap="round"/>
+    <ellipse cx="117" cy="144" rx="8" ry="11" fill="#4f5a49"/><ellipse cx="184" cy="144" rx="8" ry="11" fill="#4f5a49"/>
+    <circle cx="119.5" cy="140.5" r="2.6" fill="#fff"/><circle cx="186.5" cy="140.5" r="2.6" fill="#fff"/>
+    <ellipse cx="96" cy="164" rx="13" ry="7" fill="#eab3a0" opacity=".7"/><ellipse cx="205" cy="164" rx="13" ry="7" fill="#eab3a0" opacity=".7"/>
+    <path d="M145 158 Q150 153 155 158 L150 163 Z" fill="#b68e7c"/>
+    <path d="M150 163 Q150 176 139 170 M150 163 Q150 176 161 170" fill="none" stroke="#aa8972" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+</svg>

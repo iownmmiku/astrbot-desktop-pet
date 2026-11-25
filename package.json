@@ -1,6 +1,6 @@
 {
   "name": "astrbot-desktop-pet",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "AstrBot Live2D 桌宠 · 稳定性重建版",
   "main": "src/main.js",
   "author": "iownmmiku",
@@ -8,8 +8,9 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/*.test.js",
-    "build:win": "electron-builder --win portable --x64",
-    "pack:win": "electron-builder --win --dir --x64"
+    "build:win": "electron-builder --win --x64",
+    "pack:win": "electron-builder --win --dir --x64",
+    "render:icon": "electron scripts/render-icon.js"
   },
   "dependencies": {
     "ws": "^8.18.3"
@@ -34,11 +35,25 @@
       "THIRD_PARTY*"
     ],
     "win": {
-      "target": "portable",
-      "signAndEditExecutable": false
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "build/icon.png",
+      "signExecutable": false
     },
     "portable": {
       "artifactName": "AstrBotDesktopPet-${version}-win-x64.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "AstrBotDesktopPet-${version}-win-x64-setup.exe",
+      "shortcutName": "AstrBot 桌宠",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
     }
   }
 }

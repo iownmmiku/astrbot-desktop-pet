@@ -89,7 +89,7 @@ async function boot(t, options = {}) {
     change(active) { this.active = active; this.onChange(); }
   }
   class Tray extends EventEmitter {
-    constructor() { super(); tray = this; }
+    constructor(icon) { super(); this.icon = icon; tray = this; }
     setToolTip(text) { this.tooltip = text; }
     setContextMenu(menu) { this.menu = menu; }
     destroy() { this.destroyed = true; }
@@ -108,7 +108,8 @@ async function boot(t, options = {}) {
   Object.assign(screen, { getPrimaryDisplay: () => ({ workArea }), getDisplayNearestPoint: () => ({ workArea }), getCursorScreenPoint: () => ({ x: 800, y: 500 }) });
   const electron = {
     app, BrowserWindow: Window, Tray, screen,
-    Menu: { buildFromTemplate: items => items }, nativeImage: { createFromBitmap: () => ({}) },
+    Menu: { buildFromTemplate: items => items },
+    nativeImage: { createFromBitmap: () => ({ kind: 'paw' }), createFromPath: file => options.iconMissing ? { isEmpty: () => true } : { isEmpty: () => false, resize: size => ({ kind: 'icon', file, ...size }) } },
     ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
     dialog: { showErrorBox: (title, message) => errors.push({ title, message }), showOpenDialog: async () => ({ canceled: true }) },
     protocol: { registerSchemesAsPrivileged() {}, handle() {} },
@@ -389,4 +390,33 @@ test('motion loop sleeps when idle, speeds up for drags and sends screen-wide ga
   assert.equal(pet.getBounds().x, bounds.x, 'the window follows the cursor offset captured at drag start');
   await h.invoke('drag-stop', pet);
   h.app.emit('before-quit'); assert.equal(motionTimer(h), undefined);
+});
+
+const pngSize = file => { const data = fs.readFileSync(file); assert.equal(data.toString('ascii', 1, 4), 'PNG'); return [data.readUInt32BE(16), data.readUInt32BE(20)]; };
+
+test('windows and tray use the bundled app icon, with the drawn paw as a fallback', async t => {
+  const icon = path.join(sourceDir, 'assets', 'icon.png');
+  assert.deepEqual(pngSize(icon), [256, 256], 'runtime icon is bundled under src/ so it ships inside the app');
+  const h = await boot(t);
+  assert.equal(h.windowFor('control').options.icon, icon);
+  await h.invoke('open-quick-chat', h.windowFor('pet'));
+  assert.equal(h.windowFor('quickchat').options.icon, icon);
+  assert.deepEqual(plain(h.tray.icon), { kind: 'icon', file: icon, width: 32, height: 32, quality: 'best' });
+  const missing = await boot(t, { iconMissing: true });
+  assert.equal(missing.tray.icon.kind, 'paw');
+});
+
+test('Windows builds ship a portable EXE and a per-user installer with the app icon', () => {
+  const { build, scripts } = require('../package.json');
+  assert.deepEqual(build.win.target, ['portable', 'nsis']);
+  assert.match(scripts['build:win'], /--win --x64$/, 'the build script uses the configured targets');
+  assert.equal(build.nsis.perMachine, false, 'installing never needs administrator rights');
+  assert.equal(build.nsis.deleteAppDataOnUninstall, false, 'uninstalling keeps settings and the saved token');
+  assert.notEqual(build.portable.artifactName, build.nsis.artifactName);
+  const root = path.dirname(sourceDir);
+  assert.deepEqual(pngSize(path.join(root, build.win.icon)), [512, 512]);
+  const script = fs.readFileSync(path.join(root, build.nsis.include), 'utf8');
+  assert.match(script, /\$\{ifNot\} \$\{isUpdated\}/, 'upgrades keep the login startup entry');
+  assert.ok(script.includes(String.raw`DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "AstrBotDesktopPet"`));
+  assert.equal(require('../src/startup').loginTarget({ platform: 'win32', isPackaged: true, isolated: false, executable: String.raw`C:\Pet.exe` }).name, 'AstrBotDesktopPet', 'the uninstaller removes the same value name the app writes');
 });

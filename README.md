@@ -1,23 +1,27 @@
 # AstrBot 桌宠桌面端 🐾
 
-> **0.8.3** 睡觉时闭眼低头，互动有表情，单击头部摸摸。上一版 0.8.2 起透明区域的点击会落到下面的窗口、视线跟随全屏光标。配套插件 **0.5.2** 含安全修复，建议一并升级。详见 [更新记录](CHANGELOG.md)。
+> **0.8.4** 新增免管理员权限的安装版（启动更快），并换上正式的小猫图标。0.8.3 起睡觉闭眼低头、互动有表情、单击头部摸摸。配套插件 **0.5.2** 含安全修复，建议一并升级。详见 [更新记录](CHANGELOG.md)。
 
 透明置顶的 Electron + Live2D 桌宠，与 [AstrBot 桌宠插件](https://github.com/iownmmiku/astrbot_plugin_desktop_pet)联动。聊天使用 AstrBot 配置的模型和人格，养成状态由插件统一保存，桌面端负责形象、气泡、互动和控制台。
 
-当前桌面端版本 **0.8.3**，推荐配套插件 **0.5.2**（插件 0.5.0 起均可连接）。
+当前桌面端版本 **0.8.4**，推荐配套插件 **0.5.2**（插件 0.5.0 起均可连接）。
 
 [下载 Windows 发行版](https://github.com/iownmmiku/astrbot-desktop-pet/releases/latest) · [更新记录](CHANGELOG.md) · [接口协议](docs/PROTOCOL.md) · [发行说明与验证结果](https://github.com/iownmmiku/astrbot-desktop-pet/releases)
 
 ## 开始使用
 
 1. 在 AstrBot WebUI 的插件页安装 [astrbot_plugin_desktop_pet](https://github.com/iownmmiku/astrbot_plugin_desktop_pet)，启用插件并配置可用的聊天模型。
-2. 从 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载 `AstrBotDesktopPet-<版本>-win-x64.exe`，运行便携程序，无需安装 Node.js。
+2. 从 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载并运行，无需安装 Node.js：
+   - **安装版** `AstrBotDesktopPet-<版本>-win-x64-setup.exe`（推荐）：安装到当前用户目录，不需要管理员权限，创建桌面和开始菜单快捷方式；启动快，适合开机自启。卸载时保留设置和令牌。
+   - **便携版** `AstrBotDesktopPet-<版本>-win-x64.exe`：不安装、可放在任意位置，但每次启动都要先解压，打开较慢。
+
+   两者共用同一份设置，不能同时运行。
 3. 在控制台的「连接设置」填写插件地址。本机默认 `127.0.0.1:9898`；插件设置了 `auth_token` 时，填入相同令牌。可先「测试当前填写内容」，再点击「保存并连接」。
 4. 使用默认 Haru 示例模型，或在「形象与窗口」选择自己的 `.model3.json`。
 
 关闭控制台会保留桌宠和系统托盘。通过托盘或控制台的「退出桌宠」彻底退出；`Ctrl+Alt+P` 可重新打开控制台。
 
-Windows 便携包面向 **Windows x64**，未使用代码签名证书。
+Windows 发行版面向 **Windows x64**，未使用代码签名证书，首次运行时 Windows 可能提示“未知发布者”。
 
 ## 可以做什么
 
@@ -106,7 +110,8 @@ npm start
 
 ```powershell
 npm run build:win
-# 输出：dist/AstrBotDesktopPet-<版本>-win-x64.exe
+# 输出：dist/AstrBotDesktopPet-<版本>-win-x64-setup.exe（安装版）
+#       dist/AstrBotDesktopPet-<版本>-win-x64.exe（便携版）
 
 npm run pack:win
 # 输出：dist/win-unpacked/，用于检查解包后的应用
@@ -144,6 +149,8 @@ src/                 Electron 主进程、preload、控制台和桌宠界面
 tests/               网络、窗口几何、气泡队列、DOM与联调回归
 vendor/              本地 PixiJS、Cubism Core、Live2D显示库
 models/Haru/         官方 Haru 示例模型
+build/               应用图标源文件（icon.svg）、打包用图标与安装程序脚本
+scripts/             辅助脚本（npm run render:icon 由 icon.svg 重新生成图标）
 licenses/            第三方授权与声明副本
 assets-manifest.json 预置资源来源和 SHA-256
 docs/                通信协议与验证记录

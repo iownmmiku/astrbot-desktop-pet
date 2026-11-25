@@ -23,6 +23,7 @@ let settingsPath, drag = null, positionTimer = null, motionTimer = null, lastRoa
 let pendingSettingsBackup = false;
 let currentLayout = petLayout();
 let currentMotion = 'idle';
+const APP_ICON = path.join(__dirname, 'assets', 'icon.png');
 let modelCache = null;
 // Transparent pixels pass clicks through to the desktop. Mouse forwarding is
 // only available on Windows and macOS; elsewhere the whole window stays hit-testable.
@@ -169,7 +170,7 @@ function secureWindow(win, page) {
 
 function createWindows() {
   const prefs = { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true };
-  control = new BrowserWindow({ width: 1120, height: 820, minWidth: 860, minHeight: 650, backgroundColor: '#f7f4ee', title: 'AstrBot 桌宠 · 控制台', show: false, webPreferences: { ...prefs } });
+  control = new BrowserWindow({ icon: APP_ICON, width: 1120, height: 820, minWidth: 860, minHeight: 650, backgroundColor: '#f7f4ee', title: 'AstrBot 桌宠 · 控制台', show: false, webPreferences: { ...prefs } });
   control.removeMenu();
   control.once('ready-to-show', () => { if (!settings.startMinimized && !process.argv.includes('--background')) control.show(); });
   control.on('close', (event) => { if (!quitting && tray) { event.preventDefault(); control.hide(); } });
@@ -201,7 +202,7 @@ function openQuickChat() {
     quickChat.show(); quickChat.focus(); quickChat.webContents.send('pet:update', { type: 'quickchat_opened' });
   };
   if (!quickChat || quickChat.isDestroyed()) {
-    quickChat = new BrowserWindow({ ...bounds, frame: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, title: 'AstrBot 桌宠 · 快聊', backgroundColor: '#f7f4ee', alwaysOnTop: settings.alwaysOnTop, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
+    quickChat = new BrowserWindow({ ...bounds, icon: APP_ICON, frame: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false, skipTaskbar: true, show: false, title: 'AstrBot 桌宠 · 快聊', backgroundColor: '#f7f4ee', alwaysOnTop: settings.alwaysOnTop, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
     quickChat.removeMenu(); quickChat.once('ready-to-show', reveal);
     quickChat.on('close', event => { if (!quitting) { event.preventDefault(); closeQuickChat(); } });
     secureWindow(quickChat, 'quickchat.html');
@@ -213,7 +214,10 @@ function closeQuickChat() {
   quickChat?.hide(); nextRoam = Date.now() + 15000; return true;
 }
 
-function createTray() {
+// The tray uses the app icon; a drawn paw remains as a fallback if it cannot be read.
+function trayIcon() {
+  const image = nativeImage.createFromPath(APP_ICON);
+  if (image && !image.isEmpty()) return image.resize({ width: 32, height: 32, quality: 'best' });
   const pixels = Buffer.alloc(32 * 32 * 4);
   const pads = [[16, 21, 8], [6, 12, 4], [13, 7, 4], [22, 8, 4], [27, 15, 3]];
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
@@ -222,8 +226,11 @@ function createTray() {
       pixels[offset] = 83; pixels[offset + 1] = 133; pixels[offset + 2] = 103; pixels[offset + 3] = 255;
     }
   }
-  const icon = nativeImage.createFromBitmap(pixels, { width: 32, height: 32 });
-  tray = new Tray(icon);
+  return nativeImage.createFromBitmap(pixels, { width: 32, height: 32 });
+}
+
+function createTray() {
+  tray = new Tray(trayIcon());
   tray.setToolTip('AstrBot 桌宠');
   tray.on('double-click', openControl);
   updateTray();
