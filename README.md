@@ -1,17 +1,17 @@
 # AstrBot 桌宠桌面端 🐾
 
-> **0.8.1** 新增桌宠快聊、草稿连接检测、互动倒计时、聊天阅读优化、启动与全屏陪伴、手动更新检查。建议同时升级插件到 **0.5.1**；使用方法与平台限制见 [0.8.1 发行说明](docs/RELEASE_0.8.1.md)。
+> **0.8.2** 透明区域的点击会落到下面的窗口，模型的视线跟随全屏光标，拖动更跟手、后台更省电。配套插件 **0.5.2** 含安全修复，建议一并升级。详见 [更新记录](CHANGELOG.md)。
 
 透明置顶的 Electron + Live2D 桌宠，与 [AstrBot 桌宠插件](https://github.com/iownmmiku/astrbot_plugin_desktop_pet)联动。聊天使用 AstrBot 配置的模型和人格，养成状态由插件统一保存，桌面端负责形象、气泡、互动和控制台。
 
-当前桌面端版本 **0.8.1**，配套插件版本 **0.5.1**。
+当前桌面端版本 **0.8.2**，推荐配套插件 **0.5.2**（插件 0.5.0 起均可连接）。
 
-[下载 Windows 发行版](https://github.com/iownmmiku/astrbot-desktop-pet/releases/latest) · [更新记录](CHANGELOG.md) · [接口协议](docs/PROTOCOL.md) · [本版验证记录](docs/VALIDATION_0.5.1_0.8.1.md)
+[下载 Windows 发行版](https://github.com/iownmmiku/astrbot-desktop-pet/releases/latest) · [更新记录](CHANGELOG.md) · [接口协议](docs/PROTOCOL.md) · [发行说明与验证结果](https://github.com/iownmmiku/astrbot-desktop-pet/releases)
 
 ## 开始使用
 
 1. 在 AstrBot WebUI 的插件页安装 [astrbot_plugin_desktop_pet](https://github.com/iownmmiku/astrbot_plugin_desktop_pet)，启用插件并配置可用的聊天模型。
-2. 从 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载 `AstrBotDesktopPet-0.8.1-win-x64.exe`，运行便携程序，无需安装 Node.js。
+2. 从 [Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases) 下载 `AstrBotDesktopPet-<版本>-win-x64.exe`，运行便携程序，无需安装 Node.js。
 3. 在控制台的「连接设置」填写插件地址。本机默认 `127.0.0.1:9898`；插件设置了 `auth_token` 时，填入相同令牌。可先「测试当前填写内容」，再点击「保存并连接」。
 4. 使用默认 Haru 示例模型，或在「形象与窗口」选择自己的 `.model3.json`。
 
@@ -25,8 +25,10 @@ Windows 便携包面向 **Windows x64**，未使用代码签名证书。
 - **桌宠快聊**：双击桌宠打开小窗，收起后保留本次运行中的草稿；控制台与快聊支持复制消息、上翻保持位置和新消息提示。
 - **状态养成**：查看心情、饱食、清洁、精力和经验等级，进行投喂、摸头、洗澡、睡觉、唤醒和戳一戳。
 - **互动反馈**：显示处理中与冷却倒计时，多端同步；请求失败保留具体原因。
-- **持续睡眠**：睡着后停止漫游，精力由插件逐渐恢复；可手动唤醒，满精力时自动醒来。
+- **持续睡眠**：睡着后闭眼低头、停止漫游，精力由插件逐渐恢复；可手动唤醒，满精力时自动醒来并露出笑脸。
+- **互动表情**：投喂、洗澡、摸摸时显示开心的表情，戳一戳时显示惊讶等温和表情，几秒后恢复；表情按模型自带参数自动区分，不会在互动时露出生气或哭脸。
 - **形象与窗口**：本地 Live2D 模型、0.5–2× 缩放、置顶、鼠标穿透、拖动和自由走动。缩放同时调整窗口与画布，屏幕放不下时适配工作区。
+- **不挡桌面**：只有模型、小猫、气泡和按钮接收鼠标，周围透明区域的点击直接落到下面的窗口（Windows / macOS）。模型的视线跟随整个屏幕上的光标。
 - **气泡队列**：连续回复依次显示，主动聊天优先；悬停可暂停消失，有待读消息时可切换下一条。
 - **安静陪伴**：免打扰和「安静一小时」抑制自言自语及平台推送气泡，主动聊天和互动仍正常回应。
 - **启动与专注**：可设置登录时启动、启动时收起控制台，以及 Windows 全屏期间自动安静；开发环境不会写系统启动项。
@@ -42,7 +44,8 @@ Windows 便携包面向 **Windows x64**，未使用代码签名证书。
 | 操作 | 效果 |
 | --- | --- |
 | 拖动桌宠 | 移动窗口，位置自动保存 |
-| 单击桌宠 | 戳一戳；模型具备对应动作时播放动作 |
+| 单击头部 | 摸摸（模型需要提供名为 Head 的触摸区域；内置小猫为上半部分） |
+| 单击身体等其他部位 | 戳一戳 |
 | 双击桌宠 | 打开快聊小窗 |
 | 右键桌宠 | 打开控制台 |
 | 桌宠旁的花朵按钮 | 打开控制台 |
@@ -51,7 +54,9 @@ Windows 便携包面向 **Windows x64**，未使用代码签名证书。
 
 快聊支持 `Enter` 发送、`Shift+Enter` 换行、`Esc` 收起；收起后保留本次运行中的草稿，可通过右上角「⋯」进入完整控制台。
 
-第三方模型不一定提供睡眠、走动或互动动作组；只有模型包含匹配动作时才调用对应动画。
+第三方模型不一定提供睡眠、走动或互动动作组；只有模型包含匹配动作时才调用对应动画。睡觉闭眼使用模型的 `EyeBlink` 参数组，互动表情来自模型的表情文件，缺少时只是不显示，不影响互动本身。
+
+> 单击头部摸摸、互动表情和睡觉闭眼在 0.8.2 之后的版本提供；0.8.2 及更早版本单击任何部位都是戳一戳。
 
 ## 更换模型
 
@@ -101,7 +106,7 @@ npm start
 
 ```powershell
 npm run build:win
-# 输出：dist/AstrBotDesktopPet-0.8.1-win-x64.exe
+# 输出：dist/AstrBotDesktopPet-<版本>-win-x64.exe
 
 npm run pack:win
 # 输出：dist/win-unpacked/，用于检查解包后的应用
@@ -130,7 +135,7 @@ $env:PET_INTEGRATION_URL = 'http://127.0.0.1:19899'
 npm test
 ```
 
-联调服务运行真实插件 HTTP/WebSocket，使用临时数据和模拟 LLM。0.8.1 的功能范围与验证边界见[发行说明](docs/RELEASE_0.8.1.md)；0.8.0 的 85 项两端验证基线保留在[历史验证记录](docs/VALIDATION.md)。真实 AstrBot 安装、用户模型账户、远程 TLS、不同显卡及第三方模型仍需在实际环境联调。
+联调服务运行真实插件 HTTP/WebSocket，使用临时数据和模拟 LLM。各版本的功能范围与验证结果见 [GitHub Releases](https://github.com/iownmmiku/astrbot-desktop-pet/releases)，0.8.1 的详细使用说明见[发行说明](docs/RELEASE_0.8.1.md)；0.8.0 的 85 项两端验证基线保留在[历史验证记录](docs/VALIDATION.md)。真实 AstrBot 安装、用户模型账户、远程 TLS、不同显卡及第三方模型仍需在实际环境联调。
 
 ## 目录与第三方资源
 

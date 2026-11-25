@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 let settings = {}, config = {}, state = null, application = null, model = null, modelKey = '', loadGeneration = 0;
 let lastSpeech = 0, lastInteraction = Date.now(), chatterTimer, clickTimer, pointer = null;
 let baseWidth = 1, baseHeight = 1;
+let modelExtras = { eyeIds: [], happy: [], mild: [] }, expressionTimer = null, lastVisual = { action: '', at: 0 };
 let companionFullscreen = false, speechHovered = false;
 let layout = { width: 360, height: 500, canvasWidth: 360, canvasHeight: 390, modelBoxWidth: 315, modelBoxHeight: 367, footY: 384, effectiveScale: 1 };
 const speechQueue = new PetSpeech.SpeechQueue({ onChange: ({ current, pending, paused }) => {
@@ -54,15 +55,23 @@ async function loadModel() {
   const key = `${url}|${settings.model?.path || ''}`;
   if (modelKey === key) { fitModel(); return; }
   modelKey = key; const generation = ++loadGeneration;
-  if (model) { application.stage.removeChild(model); model.destroy(); model = null; }
+  if (model) { resetExpression(); application.stage.removeChild(model); model.destroy(); model = null; }
+  modelExtras = { eyeIds: [], happy: [], mild: [] };
   $('fallback').hidden = false; $('live2d').hidden = true;
   if (!url) return;
   try {
     if (!window.PIXI?.live2d?.Live2DModel || !window.Live2DCubismCore) throw new Error('缺少 Live2D 运行组件');
     if (!application) application = new PIXI.Application({ view: $('live2d'), width: layout.canvasWidth, height: layout.canvasHeight, resolution: Math.min(window.devicePixelRatio || 1, 2), autoDensity: true, backgroundAlpha: 0, antialias: true });
     const nextModel = await PIXI.live2d.Live2DModel.from(url, { autoInteract: false });
+    const extras = await prepareModelExtras(nextModel, url);
     if (generation !== loadGeneration) { nextModel.destroy(); return; }
-    model = nextModel;
+    model = nextModel; modelExtras = extras;
+    // Runs after blinking/motions and before the frame is drawn, so closed eyes win.
+    nextModel.internalModel?.on?.('beforeModelUpdate', () => {
+      if (state?.is_sleeping !== true || model !== nextModel) return;
+      const core = nextModel.internalModel.coreModel;
+      for (const id of modelExtras.eyeIds) { try { core.setParameterValueById(id, 0); } catch {} }
+    });
     baseWidth = model.internalModel?.width || model.width || 1;
     baseHeight = model.internalModel?.height || model.height || 1;
     application.stage.addChild(model); fitModel();
@@ -93,20 +102,89 @@ function playMotion(action) {
   return true;
 }
 
+// Classifies a model's expressions by their parameters so any Cubism model gets
+// sensible reactions: smiling mouth / smiling eyes / blush count as happy,
+// a strongly downturned mouth (angry, crying, sulking) is never used for play.
+function expressionScore(parameters) {
+  let score = 0;
+  for (const parameter of Array.isArray(parameters) ? parameters : []) {
+    const id = String(parameter?.Id || ''), value = Number(parameter?.Value) || 0;
+    if (/MouthForm/i.test(id)) score += value;
+    else if (/Smile|Tere|Blush|Cheek/i.test(id)) score += value * 0.5;
+  }
+  return score;
+}
+
+async function prepareModelExtras(target, url) {
+  const json = target.internalModel?.settings?.json || {};
+  const blink = (Array.isArray(json.Groups) ? json.Groups : []).find(group => group?.Name === 'EyeBlink');
+  const extras = { eyeIds: Array.isArray(blink?.Ids) && blink.Ids.length ? blink.Ids.filter(id => typeof id === 'string') : ['ParamEyeLOpen', 'ParamEyeROpen'], happy: [], mild: [] };
+  const expressions = Array.isArray(json.FileReferences?.Expressions) ? json.FileReferences.Expressions : [];
+  await Promise.all(expressions.map(async (item, index) => {
+    try {
+      const data = await (await fetch(new URL(item.File, url))).json();
+      const score = expressionScore(data?.Parameters);
+      if (score > 0.2) extras.happy.push(index);
+      if (score >= -0.5) extras.mild.push(index);
+    } catch { /* An unreadable expression is simply not used. */ }
+  }));
+  extras.happy.sort((a, b) => a - b); extras.mild.sort((a, b) => a - b);
+  return extras;
+}
+
+function resetExpression() {
+  clearTimeout(expressionTimer);
+  try { model?.internalModel?.motionManager?.expressionManager?.resetExpression?.(); } catch {}
+}
+
+// Shows a reaction for a few seconds, then returns to the neutral face.
+function showExpression(pool) {
+  if (!model || !pool.length) return false;
+  clearTimeout(expressionTimer);
+  const target = model;
+  Promise.resolve(target.expression(pool[Math.floor(Math.random() * pool.length)])).catch(() => {});
+  expressionTimer = setTimeout(() => { if (model === target) resetExpression(); }, 4000);
+  return true;
+}
+
 function applySleepState(previousSleeping) {
   const sleeping = state?.is_sleeping === true;
   $('sleep-badge').hidden = !sleeping;
   $('fallback').classList.toggle('sleeping', sleeping);
   if (sleeping !== previousSleeping) playMotion(sleeping ? 'sleep' : 'wake');
-  if (sleeping) speechQueue.clearPassive();
+  if (sleeping) {
+    speechQueue.clearPassive(); resetExpression();
+    // Head drops slightly while dozing; the eyes are closed in beforeModelUpdate.
+    try { model?.internalModel?.focusController?.focus(0, -0.6); } catch {}
+  } else if (previousSleeping === true) showExpression(modelExtras.happy);
 }
 
 function interactVisual(action = 'poke') {
+  // A click shows the reaction at once; the server's echo of the same action must not replay it.
+  const now = Date.now();
+  if (lastVisual.action === action && now - lastVisual.at < 1500) return;
+  lastVisual = { action, at: now };
   if (model) {
-    if (!playMotion(action) && ['play', 'poke'].includes(action) && !state?.is_sleeping) Promise.resolve(model.expression()).catch(() => {});
+    playMotion(action);
+    if (!state?.is_sleeping) showExpression(action === 'poke' ? modelExtras.mild : modelExtras.happy);
   } else {
     $('fallback').classList.remove('happy'); void $('fallback').offsetWidth; $('fallback').classList.add('happy');
   }
+}
+
+// Clicking the head pets (摸摸); anywhere else pokes. Live2D models report their
+// own hit areas; the built-in cat's head is the upper part of the drawing.
+function tapAction(event) {
+  if (model && !$('live2d').hidden) {
+    const rect = $('live2d').getBoundingClientRect();
+    try {
+      const areas = model.hitTest(event.clientX - rect.left, event.clientY - rect.top) || [];
+      if (areas.some(name => /head|face|頭|头|脸/i.test(String(name)))) return 'play';
+    } catch {}
+    return 'poke';
+  }
+  const rect = $('fallback').querySelector('svg')?.getBoundingClientRect();
+  return rect?.height && (event.clientY - rect.top) / rect.height < 0.64 ? 'play' : 'poke';
 }
 
 function scheduleChatter() {
@@ -187,7 +265,7 @@ $('speech').addEventListener('mouseleave', () => { speechHovered = false; pauseS
 $('open-control').addEventListener('click', () => api.openControl().catch(error => speak(error.message)));
 $('pet-stage').addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
-  pointer = { x: event.screenX, y: event.screenY, moved: false };
+  pointer = { x: event.screenX, y: event.screenY, moved: false, action: tapAction(event) };
   event.currentTarget.setPointerCapture(event.pointerId);
   lastInteraction = Date.now();
   api.dragStart().catch(error => speak(error.message));
@@ -198,13 +276,13 @@ $('pet-stage').addEventListener('pointermove', event => {
 });
 function stopPointer(event) {
   if (!pointer) return;
-  const clicked = !pointer.moved && event.type === 'pointerup'; pointer = null;
+  const clicked = !pointer.moved && event.type === 'pointerup', action = pointer.action || 'poke'; pointer = null;
   api.dragStop().catch(() => {}); api.petActive().catch(() => {});
   if (clicked) {
     if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; api.openQuickChat().catch(error => speak(error.message)); }
     else clickTimer = setTimeout(() => {
-      clickTimer = null; interactVisual();
-      api.action('poke').catch(error => speak(error.message));
+      clickTimer = null; interactVisual(action);
+      api.action(action).catch(error => speak(error.message));
     }, 270);
   }
 }
